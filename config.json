@@ -1,0 +1,7 @@
+{
+  "OSC_LISTEN_PORT": 8000,
+  "OSC_SEND_HOST": "127.0.0.1",
+  "OSC_SEND_PORT": 7001,
+  "MIDI_OUTPUT_NAME": "IAC Driver Bus 1",
+  "MAPPINGS_CSV_PATH": "./mappings.csv"
+}

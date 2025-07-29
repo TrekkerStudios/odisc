@@ -252,12 +252,36 @@ const handleOscMessage = (msg: Message, oscClient: OscClient, midiOut: MidiOutpu
 // --- Main Application Logic ---
 const main = async () => {
   try {
+    // --- Ensure config.json exists and load it ---
+    const configPath = './config.json';
+    if (!fs.existsSync(configPath)) {
+      console.warn(`config.json not found. Creating default config.json at ${configPath}`);
+      const defaultConfigContent = JSON.stringify({
+        OSC_LISTEN_PORT: 8000,
+        OSC_SEND_HOST: "127.0.0.1",
+        OSC_SEND_PORT: 7001,
+        MIDI_OUTPUT_NAME: "IAC Driver Bus 1",
+        MAPPINGS_CSV_PATH: "./mappings.csv"
+      }, null, 2);
+      fs.writeFileSync(configPath, defaultConfigContent, 'utf8');
+    }
+    const rawConfig = fs.readFileSync(configPath, 'utf8');
+    config = JSON.parse(rawConfig);
+    const { OSC_LISTEN_PORT, OSC_SEND_HOST, OSC_SEND_PORT, MIDI_OUTPUT_NAME, MAPPINGS_CSV_PATH } = config;
+
+    // --- Ensure mappings.csv exists and load it ---
+    if (!fs.existsSync(MAPPINGS_CSV_PATH)) {
+      console.warn(`mappings.csv not found. Creating default mappings.csv at ${MAPPINGS_CSV_PATH}`);
+      const defaultMappingsContent = "osc_in_address,osc_in_args,osc_out_address,osc_out_args,midi_channel,midi_type,midi_note,midi_velocity,midi_controller,midi_value,qc_preset_id,setlist\n/example/osc/in,arg1,/example/osc/out,outarg1,1,note_on,60,100,,,,";
+      fs.writeFileSync(MAPPings_CSV_PATH, defaultMappingsContent, 'utf8');
+    }
     mappings = await loadMappings(MAPPINGS_CSV_PATH);
 
     // --- Initialize OSC Server ---
     const oscServer = new OscServer(OSC_LISTEN_PORT, '0.0.0.0', () => {
       console.log(`OSC Server is listening on port ${OSC_LISTEN_PORT}`);
     });
+
 
     // --- Initialize OSC Client ---
     const oscClient = new OscClient(OSC_SEND_HOST, OSC_SEND_PORT);

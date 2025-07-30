@@ -6,7 +6,6 @@ out
 dist
 *.tgz
 build
-odisc
 
 # code coverage
 coverage
@@ -37,3 +36,4 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 mappings.csv
 config.json
+.vscode

@@ -1,0 +1,1 @@
+cp ./src-tauri/resources/bin/odisc-build-aarch64-apple-darwin ./src-tauri/target/debug/odisc-build

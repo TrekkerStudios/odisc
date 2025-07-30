@@ -1,0 +1,69 @@
+name: Build & Bundle Tauri App
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Bundle (${{ matrix.os }} - ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - os: windows
+            runner: windows-latest
+            arch: x64
+            arch_label: x86_64
+          - os: macos
+            runner: macos-latest
+            arch: x64
+            arch_label: x86_64
+          - os: macos
+            runner: macos-latest
+            arch: arm64
+            arch_label: aarch64
+          - os: ubuntu
+            runner: ubuntu-latest
+            arch: x64
+            arch_label: x86_64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        run: bun install
+
+      - name: Build backend
+        run: bun run build
+
+      - name: Copy backend binary to Tauri resources
+        run: |
+          mkdir -p tauri/odisc/src-tauri/resources/bin
+          cp dist/odisc-build tauri/odisc/src-tauri/resources/bin/odisc-build-${{ matrix.arch_label }}
+        shell: bash
+
+      - name: Install Tauri dependencies
+        run: bun install
+        working-directory: tauri/odisc
+
+      - name: Build Tauri app
+        run: bun run tauri build
+        working-directory: tauri/odisc
+
+      - name: Upload Tauri build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-build-${{ matrix.os }}-${{ matrix.arch }}
+          path: tauri/odisc/target/release/

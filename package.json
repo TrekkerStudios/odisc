@@ -5,7 +5,9 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun run --hot src/index.ts",
-    "build": "bun build src/index.ts --outdir ./build --target node && bun build --compile build/index.js --outfile odisc"
+    "build:js": "bun build src/index.ts --outdir ./build --target node",
+    "build:compile": "bun build --compile build/index.js --outfile dist/odisc-build",
+    "build:tauri": "bun run build:js && bun run build:compile"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -1,19 +1,81 @@
 import { Server as OscServer, Client as OscClient, Message } from 'node-osc';
 import { Output as MidiOutput, getOutputs } from 'easymidi';
 import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import csv from 'csv-parser';
 
-// --- Configuration Loading ---
+const printMappings = process.argv.includes('--print-mappings');
+
+// --- Directory Setup ---
+const odiscDir = path.join(os.homedir(), 'Documents', 'odisc');
+if (!fs.existsSync(odiscDir)) {
+  fs.mkdirSync(odiscDir, { recursive: true });
+}
+
+const configPath = path.join(odiscDir, 'config.json');
+const defaultMappingsPath = path.join(odiscDir, 'mappings.csv');
+
+// --- Ensure mappings.csv exists (column headers only) ---
+const mappingsHeaders = [
+  'osc_in_address',
+  'osc_in_args',
+  'osc_out_address',
+  'osc_out_args',
+  'midi_channel',
+  'midi_type',
+  'midi_note',
+  'midi_velocity',
+  'midi_controller',
+  'midi_value',
+  'setlist',
+  'qc_preset_id'
+].join(',') + '\n';
+
+if (!fs.existsSync(defaultMappingsPath)) {
+  console.warn(`mappings.csv not found. Creating default mappings.csv at ${defaultMappingsPath}`);
+  fs.writeFileSync(defaultMappingsPath, mappingsHeaders, 'utf8');
+}
+
+// --- MIDI Device Detection ---
+const midiOutputs = getOutputs();
+let selectedMidiDevice = midiOutputs.length > 0 ? midiOutputs[0] : "";
+
+// --- Ensure config.json exists ---
+if (!fs.existsSync(configPath)) {
+  console.warn(`config.json not found. Creating default config.json at ${configPath}`);
+  const defaultConfig = {
+    OSC_LISTEN_PORT: 8000,
+    OSC_SEND_HOST: "127.0.0.1",
+    OSC_SEND_PORT: 7001,
+    MIDI_OUTPUT_NAME: selectedMidiDevice
+  };
+  fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf8');
+}
+
+// --- Load and possibly update config.json ---
 let config: any;
 try {
-  const rawConfig = fs.readFileSync('./config.json', 'utf8');
+  const rawConfig = fs.readFileSync(configPath, 'utf8');
   config = JSON.parse(rawConfig);
+
+  // If MIDI_OUTPUT_NAME is missing or not available, set to first available and update config.json
+  if (!config.MIDI_OUTPUT_NAME || !midiOutputs.includes(config.MIDI_OUTPUT_NAME)) {
+    if (midiOutputs.length > 0) {
+      config.MIDI_OUTPUT_NAME = midiOutputs[0];
+      console.warn(`Configured MIDI device not found. Setting MIDI_OUTPUT_NAME to first available: "${midiOutputs[0]}"`);
+    } else {
+      config.MIDI_OUTPUT_NAME = "";
+      console.warn("No MIDI output devices available. MIDI output will be disabled.");
+    }
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+  }
 } catch (error) {
   console.error('Error reading or parsing config.json:', error);
   process.exit(1);
 }
 
-const { OSC_LISTEN_PORT, OSC_SEND_HOST, OSC_SEND_PORT, MIDI_OUTPUT_NAME, MAPPINGS_CSV_PATH } = config;
+const { OSC_LISTEN_PORT, OSC_SEND_HOST, OSC_SEND_PORT, MIDI_OUTPUT_NAME } = config;
 
 // --- Interfaces ---
 interface Mapping {
@@ -37,13 +99,6 @@ let currentSetlist: number = 0;
 
 // --- Functions ---
 
-/**
- * Sends the MIDI messages to select a preset on the Quad Cortex.
- * @param presetId The preset identifier (e.g., '1A', '32H').
- * @param channel The MIDI channel to send on.
- * @param midiOut The MIDI output instance.
- * @param setlist The setlist number to use.
- */
 const sendQuadCortexPreset = (presetId: string, channel: number, midiOut: MidiOutput, setlist: number) => {
   const match = presetId.match(/^(\d+)([A-H])$/i);
   if (!match || !match[1] || !match[2]) {
@@ -74,12 +129,6 @@ const sendQuadCortexPreset = (presetId: string, channel: number, midiOut: MidiOu
   console.log(`Sent MIDI for QC Preset: CC#0 val 0, CC#32 val ${setlist}, PC# ${programChangeNumber} on channel ${channel}`);
 };
 
-
-/**
- * Loads and parses the mappings from the CSV file.
- * @param filePath Path to the CSV file.
- * @returns A promise that resolves with an array of mappings.
- */
 const loadMappings = (filePath: string): Promise<Mapping[]> => {
   return new Promise((resolve, reject) => {
     const results: Mapping[] = [];
@@ -98,8 +147,10 @@ const loadMappings = (filePath: string): Promise<Mapping[]> => {
         results.push(mapping as Mapping);
       })
       .on('end', () => {
-        console.log('Mappings loaded successfully:');
-        console.table(results);
+        if (printMappings) {
+          console.log('Mappings loaded successfully:');
+          console.table(results);
+        }
         resolve(results);
       })
       .on('error', (error) => {
@@ -108,19 +159,11 @@ const loadMappings = (filePath: string): Promise<Mapping[]> => {
   });
 };
 
-/**
- * Handles incoming OSC messages.
- * @param msg The OSC message.
- * @param oscClient The OSC client to send messages with.
- * @param midiOut The MIDI output to send messages with.
- */
 const handleOscMessage = (msg: any, oscClient: OscClient, midiOut: MidiOutput | null) => {
   const [address, ...args] = msg;
-  // Normalize the address by removing any trailing slash to make matching more robust.
   const normalizedAddress = address.endsWith('/') ? address.slice(0, -1) : address;
   console.log(`Received OSC message: ${address} (normalized to ${normalizedAddress})`, args);
 
-  // Special handler for setting the setlist
   if (normalizedAddress === '/setlist') {
     if (typeof args[0] === 'number') {
       currentSetlist = args[0];
@@ -128,27 +171,21 @@ const handleOscMessage = (msg: any, oscClient: OscClient, midiOut: MidiOutput | 
     } else {
       console.warn(`Invalid argument for /setlist. Expected a number.`);
     }
-    return; // Stop further processing
+    return;
   }
 
   const mapping = mappings.find(m => {
     if (m.osc_in_address !== normalizedAddress) {
       return false;
     }
-
-    // If osc_in_args is defined, we must match the arguments.
     if (m.osc_in_args) {
       const expectedArgs = String(m.osc_in_args).split(' ');
       const receivedArgs = args.map(String);
-
       if (expectedArgs.length !== receivedArgs.length) {
         return false;
       }
-
       return expectedArgs.every((expected, i) => expected === receivedArgs[i]);
     }
-
-    // If osc_in_args is not defined, match any message with this address.
     return true;
   });
 
@@ -160,8 +197,6 @@ const handleOscMessage = (msg: any, oscClient: OscClient, midiOut: MidiOutput | 
   // --- OSC Output ---
   if (mapping.osc_out_address) {
     let finalArgs: any[] = [];
-
-    // Prioritize osc_out_args if it is defined (not null/undefined) and not an empty string.
     if (mapping.osc_out_args != null && String(mapping.osc_out_args).trim() !== '') {
       const argsString = String(mapping.osc_out_args);
       finalArgs = argsString.split(' ').map(arg => {
@@ -169,7 +204,6 @@ const handleOscMessage = (msg: any, oscClient: OscClient, midiOut: MidiOutput | 
         return isNaN(num) ? arg : { type: 'f', value: num };
       });
     } else {
-      // Otherwise, use the arguments from the incoming message.
       finalArgs = args.map((arg: any) => {
         if (typeof arg === 'number') {
           return { type: 'f', value: arg };
@@ -177,15 +211,11 @@ const handleOscMessage = (msg: any, oscClient: OscClient, midiOut: MidiOutput | 
         return arg;
       });
     }
-
-    // Explicitly construct the OSC message to ensure compatibility.
     const oscMessage = new Message(mapping.osc_out_address);
     finalArgs.forEach(arg => oscMessage.append(arg));
-
     oscClient.send(oscMessage, (err) => {
       if (err) console.error(`Error sending OSC message:`, err);
       else {
-        // Log the sent values cleanly for readability
         const loggedArgs = finalArgs.map(a => (a && a.value) !== undefined ? a.value : a);
         console.log(`Sent OSC message to ${mapping.osc_out_address}:`, loggedArgs);
       }
@@ -249,34 +279,10 @@ const handleOscMessage = (msg: any, oscClient: OscClient, midiOut: MidiOutput | 
   }
 };
 
-
 // --- Main Application Logic ---
 const main = async () => {
   try {
-    // --- Ensure config.json exists and load it ---
-    const configPath = './config.json';
-    if (!fs.existsSync(configPath)) {
-      console.warn(`config.json not found. Creating default config.json at ${configPath}`);
-      const defaultConfigContent = JSON.stringify({
-        OSC_LISTEN_PORT: 8000,
-        OSC_SEND_HOST: "127.0.0.1",
-        OSC_SEND_PORT: 7001,
-        MIDI_OUTPUT_NAME: "IAC Driver Bus 1",
-        MAPPINGS_CSV_PATH: "./mappings.csv"
-      }, null, 2);
-      fs.writeFileSync(configPath, defaultConfigContent, 'utf8');
-    }
-    const rawConfig = fs.readFileSync(configPath, 'utf8');
-    config = JSON.parse(rawConfig);
-    const { OSC_LISTEN_PORT, OSC_SEND_HOST, OSC_SEND_PORT, MIDI_OUTPUT_NAME, MAPPINGS_CSV_PATH } = config;
-
-    // --- Ensure mappings.csv exists and load it ---
-    if (!fs.existsSync(MAPPINGS_CSV_PATH)) {
-      console.warn(`mappings.csv not found. Creating default mappings.csv at ${MAPPINGS_CSV_PATH}`);
-      const defaultMappingsContent = "osc_in_address,osc_in_args,osc_out_address,osc_out_args,midi_channel,midi_type,midi_note,midi_velocity,midi_controller,midi_value,qc_preset_id,setlist\n/example/osc/in,arg1,/example/osc/out,outarg1,1,note_on,60,100,,,,";
-      fs.writeFileSync(MAPPINGS_CSV_PATH, defaultMappingsContent, 'utf8');
-    }
-    mappings = await loadMappings(MAPPINGS_CSV_PATH);
+    mappings = await loadMappings(defaultMappingsPath);
 
     // --- Initialize OSC Server ---
     const oscServer = new OscServer(OSC_LISTEN_PORT, '0.0.0.0', () => {
@@ -290,13 +296,15 @@ const main = async () => {
     // --- Initialize MIDI Output ---
     let midiOut: MidiOutput | null = null;
     try {
-      console.log('Available MIDI outputs:', getOutputs());
-      if (getOutputs().includes(MIDI_OUTPUT_NAME)) {
+      console.log('Available MIDI outputs:', midiOutputs);
+      if (MIDI_OUTPUT_NAME && midiOutputs.includes(MIDI_OUTPUT_NAME)) {
         midiOut = new MidiOutput(MIDI_OUTPUT_NAME);
         console.log(`MIDI Output is set to "${MIDI_OUTPUT_NAME}"`);
+      } else if (midiOutputs.length > 0) {
+        midiOut = new MidiOutput(midiOutputs[0]);
+        console.log(`MIDI Output is set to first available: "${midiOutputs[0]}"`);
       } else {
-        console.warn(`MIDI output port "${MIDI_OUTPUT_NAME}" not found. MIDI output will be disabled.`);
-        console.warn(`Please create a virtual MIDI port named "${MIDI_OUTPUT_NAME}" or change the name in the script.`);
+        console.warn("No MIDI output devices available. MIDI output will be disabled.");
       }
     } catch (error) {
       console.error('Could not initialize MIDI output:', error);
@@ -317,7 +325,7 @@ const main = async () => {
 
   } catch (error) {
     if ((error as any).code === 'ENOENT') {
-      console.error(`Error: Could not find the mapping file at '${MAPPINGS_CSV_PATH}'. Please create it.`);
+      console.error(`Error: Could not find the mapping file at '${defaultMappingsPath}'. Please create it.`);
     } else {
       console.error('Failed to start the application:', error);
     }

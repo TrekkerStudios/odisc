@@ -153,7 +153,7 @@ const handleOscMessage = (msg: Message, oscClient: OscClient, midiOut: MidiOutpu
   });
 
   if (!mapping) {
-    console.log(`No mapping found for address: ${normalizedAddress}`);
+    console.log(`No mapping found for address: ${normalizedAddress} with args: ${JSON.stringify(args)}`);
     return;
   }
 

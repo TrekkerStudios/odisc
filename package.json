@@ -1,6 +1,12 @@
 {
   "name": "odisc",
   "module": "src/index.ts",
+  "bin": "src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --hot src/index.ts",
+    "build": "bun build src/index.ts --outdir ./build --target node && bun build --compile build/index.js --outfile odisc"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -10,8 +16,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@types/node-osc": "^9.1.0",
     "csv-parser": "^3.2.0",
     "easymidi": "^3.1.0",
     "node-osc": "^9.1.7"
+  },
+  "patchedDependencies": {
+    "binpack@0.1.0": "patches/binpack@0.1.0.patch",
+    "node-osc@9.1.7": "patches/node-osc@9.1.7.patch"
   }
 }

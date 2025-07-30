@@ -46,7 +46,7 @@ jobs:
         run: bun install
 
       - name: Build backend
-        run: bun run build
+        run: bun run build:tauri
 
       - name: Copy backend binary to Tauri resources
         run: |

@@ -32,12 +32,12 @@ jobs:
             arch_label: aarch64
             target_triple: aarch64-apple-darwin
             exe_ext: ""
-          - os: ubuntu
-            runner: ubuntu-22.04
-            arch: x64
-            arch_label: x86_64
-            target_triple: x86_64-unknown-linux-gnu
-            exe_ext: ""
+          # - os: ubuntu
+          #   runner: ubuntu-22.04
+          #   arch: x64
+          #   arch_label: x86_64
+          #   target_triple: x86_64-unknown-linux-gnu
+          #   exe_ext: ""
 
     steps:
       - name: Checkout code
@@ -96,4 +96,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tauri-build-${{ matrix.os }}-${{ matrix.arch }}
-          path: tauri/odisc/target/release/
+          path: |
+            tauri/odisc/src-tauri/target/**/bundle/**/*
+            tauri/odisc/target/**/bundle/**/*

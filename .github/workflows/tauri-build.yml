@@ -92,10 +92,20 @@ jobs:
         run: bun run tauri build --target ${{ matrix.target_triple }}
         working-directory: tauri/odisc
 
-      - name: Upload Tauri build artifacts
+      - name: Upload Tauri distributable artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tauri-build-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            tauri/odisc/src-tauri/target/**/bundle/**/*
-            tauri/odisc/target/**/bundle/**/*
+            # macOS .app and .dmg
+            tauri/odisc/src-tauri/target/**/bundle/macos/*.app
+            tauri/odisc/src-tauri/target/**/bundle/dmg/*.dmg
+            tauri/odisc/target/**/bundle/macos/*.app
+            tauri/odisc/target/**/bundle/dmg/*.dmg
+            # Windows .msi, .exe (NSIS), and .exe (bundle)
+            tauri/odisc/src-tauri/target/**/bundle/msi/*.msi
+            tauri/odisc/src-tauri/target/**/bundle/nsis/*.exe
+            tauri/odisc/src-tauri/target/**/bundle/windows/*.exe
+            tauri/odisc/target/**/bundle/msi/*.msi
+            tauri/odisc/target/**/bundle/nsis/*.exe
+            tauri/odisc/target/**/bundle/windows/*.exe

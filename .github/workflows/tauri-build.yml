@@ -18,18 +18,26 @@ jobs:
             runner: windows-latest
             arch: x64
             arch_label: x86_64
+            target_triple: x86_64-pc-windows-msvc
+            exe_ext: .exe
           - os: macos
             runner: macos-latest
             arch: x64
             arch_label: x86_64
+            target_triple: x86_64-apple-darwin
+            exe_ext: ""
           - os: macos
             runner: macos-latest
             arch: arm64
             arch_label: aarch64
+            target_triple: aarch64-apple-darwin
+            exe_ext: ""
           - os: ubuntu
-            runner: ubuntu-latest
+            runner: ubuntu-22.04
             arch: x64
             arch_label: x86_64
+            target_triple: x86_64-unknown-linux-gnu
+            exe_ext: ""
 
     steps:
       - name: Checkout code
@@ -69,7 +77,7 @@ jobs:
       - name: Copy backend binary to Tauri resources
         run: |
           mkdir -p tauri/odisc/src-tauri/resources/bin
-          cp dist/odisc-build tauri/odisc/src-tauri/resources/bin/odisc-build-${{ matrix.arch_label }}
+          cp dist/odisc-build tauri/odisc/src-tauri/resources/bin/odisc-build-${{ matrix.target_triple }}${{ matrix.exe_ext }}
         shell: bash
 
       - name: Install Tauri dependencies

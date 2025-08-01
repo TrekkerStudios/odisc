@@ -1,7 +1,9 @@
-use crate::helpers::Mapping;
+use crate::odisc::main::helpers::Mapping;
 use regex::Regex;
-use rosc::{OscMessage, OscPacket, OscType, decoder, encoder};
+use rosc::{decoder, encoder, OscMessage, OscPacket, OscType};
 use std::io;
+use tauri::AppHandle;
+use tauri::Emitter;
 use tokio::net::UdpSocket;
 
 // OSC
@@ -17,10 +19,12 @@ pub async fn incoming_osc_handler(sock: &UdpSocket, buf: &mut [u8]) -> io::Resul
 }
 
 pub async fn outgoing_osc_handler(
+    sock: &UdpSocket,
     osc_out_address: &str,
     osc_out_args: Option<&str>,
     osc_host: &str,
     osc_port: &u16,
+    app_handle: &AppHandle,
 ) -> std::io::Result<()> {
     let final_args: Vec<OscType> = if let Some(osc_out_args) = osc_out_args {
         if !osc_out_args.trim().is_empty() {
@@ -52,18 +56,35 @@ pub async fn outgoing_osc_handler(
     let encoded = encoder::encode(&packet).unwrap();
 
     // Send the packet over UDP
-    let sock = UdpSocket::bind("0.0.0.0:0").await?;
     let addr = format!("{}:{}", osc_host, osc_port);
     sock.send_to(&encoded, addr).await?;
 
-    println!("Sent OSC message: {} {:#?}", osc_out_address, osc_out_args.unwrap());
+    println!(
+        "Sent OSC message: {} {:#?}",
+        osc_out_address,
+        osc_out_args.unwrap()
+    );
+    app_handle
+        .emit(
+            "backend-log",
+            format!(
+                "Sent OSC message: {} {:#?}",
+                osc_out_address,
+                osc_out_args.unwrap()
+            ),
+        )
+        .unwrap();
 
     Ok(())
 }
 
 // CSV MAPPING
 
-pub fn match_mappings<'a>(mappings: &'a [Mapping], msg: &OscMessage) -> Option<&'a Mapping> {
+pub fn match_mappings<'a>(
+    mappings: &'a [Mapping],
+    msg: &OscMessage,
+    app_handle: &AppHandle,
+) -> Option<&'a Mapping> {
     if let Some(mapping) = mappings.iter().find(|m| {
         let addr_match: bool = m.osc_in_address == msg.addr;
 
@@ -88,6 +109,16 @@ pub fn match_mappings<'a>(mappings: &'a [Mapping], msg: &OscMessage) -> Option<&
             mapping.osc_in_address,
             mapping.osc_in_args.as_deref()
         );
+        app_handle
+            .emit(
+                "backend-log",
+                format!(
+                    "Found mapping: {:?} {:?}",
+                    mapping.osc_in_address,
+                    mapping.osc_in_args.as_deref()
+                ),
+            )
+            .unwrap();
         return Some(mapping);
     } else {
         println!("No mapping found for {:?}", msg.addr);
@@ -97,7 +128,7 @@ pub fn match_mappings<'a>(mappings: &'a [Mapping], msg: &OscMessage) -> Option<&
 
 // HANDLE QC
 
-fn parse_preset_id(preset_id: &str) -> Option<(u32, char)> {
+fn parse_preset_id(preset_id: &str, app_handle: &AppHandle) -> Option<(u32, char)> {
     let re = Regex::new(r"^(\d+)([A-H])$").unwrap();
     if let Some(caps) = re.captures(preset_id) {
         let number = caps.get(1).and_then(|m| m.as_str().parse::<u32>().ok());
@@ -109,6 +140,15 @@ fn parse_preset_id(preset_id: &str) -> Option<(u32, char)> {
                 "Invalid Quad Cortex preset format: {}. Expected format like '1A', '12D', etc.",
                 preset_id
             );
+            app_handle
+                .emit(
+                    "backend-log",
+                    format!(
+                         "Invalid Quad Cortex preset format: {}. Expected format like '1A', '12D', etc.",
+                preset_id
+                    ),
+                )
+                .unwrap();
             None
         }
     } else {
@@ -116,6 +156,15 @@ fn parse_preset_id(preset_id: &str) -> Option<(u32, char)> {
             "Invalid Quad Cortex preset format: {}. Expected format like '1A', '12D', etc.",
             preset_id
         );
+        app_handle
+            .emit(
+                "backend-log",
+                format!(
+                    "Invalid Quad Cortex preset format: {}. Expected format like '1A', '12D', etc.",
+                    preset_id
+                ),
+            )
+            .unwrap();
         None
     }
 }
@@ -132,8 +181,8 @@ fn parse_preset_midi(number: &u32, letter: &char) -> Option<u32> {
     return Some(pgm_ch_num);
 }
 
-pub fn send_qc_preset(preset_id: &String, setlist: &u32) -> Option<u32> {
-    if let Some((number, letter)) = parse_preset_id(preset_id) {
+pub fn send_qc_preset(preset_id: &String, setlist: &u32, app_handle: &AppHandle) -> Option<u32> {
+    if let Some((number, letter)) = parse_preset_id(preset_id, app_handle) {
         let program_change_number = parse_preset_midi(&number, &letter);
         println!(
             "Sending QC Preset: Setlist {}, Preset {} -> PC: {}",
@@ -141,6 +190,17 @@ pub fn send_qc_preset(preset_id: &String, setlist: &u32) -> Option<u32> {
             preset_id,
             program_change_number.unwrap()
         );
+        app_handle
+            .emit(
+                "backend-log",
+                format!(
+                    "Sending QC Preset: Setlist {}, Preset {} -> PC: {}",
+                    setlist,
+                    preset_id,
+                    program_change_number.unwrap()
+                ),
+            )
+            .unwrap();
         return program_change_number;
     } else {
         // Handle the error case if needed

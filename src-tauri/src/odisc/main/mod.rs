@@ -3,11 +3,11 @@ mod helpers;
 mod midi;
 use midir::MidiOutput;
 use rosc::OscPacket;
+use tauri::AppHandle;
 use tokio::net::UdpSocket;
 use tokio::signal;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn backend(app_handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // Check/create files
     let (mappings_path, config_path) = helpers::ensure_files()?;
 
@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut buf = [0; 1024];
 
     // Connect to the chosen MIDI port
-    let mut conn_out = match midi::connect_to_midi_port(midi_out, &config.midi_output_name) {
+    let mut conn_out = match midi::connect_to_midi_port(midi_out, &config.midi_output_name, &app_handle) {
         Ok(conn) => conn,
         Err(e) => {
             eprintln!("Error connecting to MIDI port: {}", e);
@@ -56,18 +56,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     OscPacket::Message(msg) => {
                         println!("Address: {}", msg.addr);
                         println!("Arguments: {:?}", msg.args);
-                        if let Some(found_map) = handlers::match_mappings(&mappings, &msg) {
+                        if let Some(found_map) = handlers::match_mappings(&mappings, &msg, app_handle) {
                             // Handle outgoing OSC
                             handlers::outgoing_osc_handler(
+                                &sock,
                                 found_map.osc_out_address.as_ref().unwrap().as_str(),
                                 found_map.osc_out_args.as_deref(),
                                 &config.osc_send_host,
                                 &config.osc_send_port,
+                                app_handle
                             )
                             .await?;
 
                             // Handle MIDI message
-                            if let Err(e) = midi::handle_midi_message(&mut conn_out, &found_map) {
+                            if let Err(e) = midi::handle_midi_message(&mut conn_out, &found_map, &app_handle) {
                                 eprintln!("Error sending MIDI message: {}", e);
                             }
                         } else {

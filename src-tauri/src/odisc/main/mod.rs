@@ -27,7 +27,7 @@ pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std:
         // }
         Output::App => {
             if let Some(app_handle) = get_app_handle() {
-                app_handle.emit("backend-log", &msg)?;
+                app_handle.emit("backend-log", format!("📥 {}", &msg))?;
                 println!("{}", msg);
             } else {
                 eprintln!("App handle not set!");
@@ -36,7 +36,7 @@ pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std:
         }
         Output::AppError => {
             if let Some(app_handle) = get_app_handle() {
-                app_handle.emit("backend-log", &msg)?;
+                app_handle.emit("backend-log", format!("❌ {}", &msg))?;
                 eprintln!("{}", msg);
             } else {
                 eprintln!("App handle not set!");

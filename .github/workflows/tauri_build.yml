@@ -1,113 +1,29 @@
-name: Build & Bundle Tauri App
+name: 'Build & Release Tauri App'
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Build & Bundle (${{ matrix.os }} - ${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows
-            runner: windows-latest
-            arch: x64
-            arch_label: x86_64
-            target_triple: x86_64-pc-windows-msvc
-            exe_ext: .exe
-          - os: macos
-            runner: macos-13
-            arch: x64
-            arch_label: x86_64
-            target_triple: x86_64-apple-darwin
-            exe_ext: ""
-          - os: macos
-            runner: macos-latest
-            arch: arm64
-            arch_label: aarch64
-            target_triple: aarch64-apple-darwin
-            exe_ext: ""
-          # - os: ubuntu
-          #   runner: ubuntu-22.04
-          #   arch: x64
-          #   arch_label: x86_64
-          #   target_triple: x86_64-unknown-linux-gnu
-          #   exe_ext: ""
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.0-dev \
-            libsoup-3.0-dev \
-            libssl-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            build-essential \
-            curl \
-            wget \
-            pkg-config \
-            libglib2.0-dev
-
-      - name: Install backend dependencies
-        run: bun install
-
-      - name: Build backend
-        run: bun run build:tauri
-
-      - name: Copy backend binary to Tauri resources
-        run: |
-          mkdir -p tauri/odisc/src-tauri/resources/bin
-          cp dist/odisc-build tauri/odisc/src-tauri/resources/bin/odisc-build-${{ matrix.target_triple }}${{ matrix.exe_ext }}
-        shell: bash
-
-      - name: Install Tauri dependencies
-        run: bun install
-        working-directory: tauri/odisc
-
-      - name: Set Rust target triple
-        run: echo "CARGO_BUILD_TARGET=${{ matrix.target_triple }}" >> $GITHUB_ENV
-
-      - name: Build Tauri app
-        run: bun run tauri build --target ${{ matrix.target_triple }}
-        working-directory: tauri/odisc
-
-      - name: Collect distributables
-        run: |
-          mkdir -p dist-artifacts
-          # macOS
-          find tauri/odisc/ -type f -name "*.app" -exec cp -R {} dist-artifacts/ \;
-          find tauri/odisc/ -type f -name "*.dmg" -exec cp {} dist-artifacts/ \;
-          # Windows
-          find tauri/odisc/ -type f -name "*.msi" -exec cp {} dist-artifacts/ \;
-          find tauri/odisc/ -type f -name "*.exe" -exec cp {} dist-artifacts/ \;
-          # (Optional) Linux
-          find tauri/odisc/ -type f -name "*.deb" -exec cp {} dist-artifacts/ \;
-          find tauri/odisc/ -type f -name "*.AppImage" -exec cp {} dist-artifacts/ \;
-        shell: bash
-      
-      - name: Upload Tauri distributable artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: tauri-build-${{ matrix.os }}-${{ matrix.arch }}
-          path: dist-artifacts/*
+  build-tauri:
+    # Use the official Tauri action to build the app
+    uses: tauri-apps/tauri-action@v0
+    with:
+      # The name of the release artifact.
+      # __VERSION__ will be replaced with the version from tauri.conf.json
+      tagName: app-v__VERSION__
+      # The name of the release.
+      releaseName: 'App v__VERSION__'
+      # A message to be included in the release.
+      releaseBody: 'See the assets to download this version.'
+      # Creates the release as a draft so you can publish it manually.
+      releaseDraft: true
+      # Marks the release as a pre-release.
+      prerelease: false
+    secrets:
+      # Pass the GITHUB_TOKEN to the action to allow it to create a release.
+      githubToken: ${{ secrets.GITHUB_TOKEN }}

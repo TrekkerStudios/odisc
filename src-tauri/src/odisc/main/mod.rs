@@ -4,9 +4,10 @@ mod midi;
 use crate::get_app_handle;
 use midir::MidiOutput;
 use rosc::OscPacket;
-use tauri::Emitter;
+use tauri::{AppHandle, Emitter};
 use tokio::net::UdpSocket;
 use tokio::signal;
+use serde_json::json;
 
 pub enum Output {
     Console,
@@ -46,7 +47,7 @@ pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std:
     }
 }
 
-pub async fn backend() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // Check/create files
     let (mappings_path, config_path) = helpers::ensure_files()?;
 
@@ -76,8 +77,17 @@ pub async fn backend() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("0.0.0.0:{}", config.osc_listen_port);
     let sock = UdpSocket::bind(addr).await?;
     let mut buf = [0; 1024];
-    let _ = custom_print(format!("OSC server listening on port {}", &config.osc_listen_port), Output::App);
-    let _ = custom_print(format!("OSC server sending on {}:{}", &config.osc_send_host, &config.osc_send_port), Output::App);
+    let _ = custom_print(
+        format!("OSC server listening on port {}", &config.osc_listen_port),
+        Output::App,
+    );
+    let _ = custom_print(
+        format!(
+            "OSC server sending on {}:{}",
+            &config.osc_send_host, &config.osc_send_port
+        ),
+        Output::App,
+    );
 
     // Connect to the chosen MIDI port
     let mut conn_out = match midi::connect_to_midi_port(midi_out, &config.midi_output_name) {
@@ -87,7 +97,17 @@ pub async fn backend() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
-    let _ = custom_print(format!("MIDI device connected: {}", &config.midi_output_name), Output::App);
+    let _ = custom_print(
+        format!("MIDI device connected: {}", &config.midi_output_name),
+        Output::App,
+    );
+
+    let network_payload = json!({
+        "osc_listen_port": config.osc_listen_port.to_string(),
+        "osc_send_port": config.osc_send_port.to_string(),
+        "osc_send_host": config.osc_send_host,
+    });
+    app_handle.emit("network-data", network_payload.to_string())?;
 
     println!("Application started. Press Ctrl+C to exit.");
     // Listen for OSC packets

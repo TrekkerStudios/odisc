@@ -10,12 +10,17 @@
   let csvHeaders: string[] = [];
   let isLoadingCsv = false;
   let csvError = "";
+  let networkData = {
+    osc_listen_port: "_",
+    osc_send_port: "_",
+    osc_send_host: "_",
+  };
 
   onMount(() => {
     console.log("Component mounted, setting up listeners...");
 
     // Listen for backend-log events FIRST
-    const unlistenPromise = listen<string>("backend-log", (event) => {
+    const backendLogPromise = listen<string>("backend-log", (event) => {
       console.log("Received backend-log event:", event.payload);
       log += event.payload + "\n";
       // Scroll to bottom after DOM updates
@@ -24,6 +29,26 @@
           logContainer.scrollTop = logContainer.scrollHeight;
         }
       });
+    });
+
+    const networkDataPromise = listen<string>("network-data", (event) => {
+      console.log("Received network-data event:", event.payload);
+      try {
+        const payload = JSON.parse(event.payload);
+        const {
+          osc_listen_port = "_",
+          osc_send_port = "_",
+          osc_send_host = "_",
+        } = payload || {};
+
+        networkData = {
+          osc_listen_port,
+          osc_send_port,
+          osc_send_host,
+        };
+      } catch (error) {
+        console.error("Failed to load network data:", error);
+      }
     });
 
     // Then start the backend process
@@ -37,13 +62,15 @@
       })
       .catch((error) => {
         console.error("run_backend invoke failed:", error);
-        log += `Error: ${error}\n`;
+        log += `Error: ${error}
+`;
         isConnected = false;
       });
 
     // Clean up listener on unmount
     return () => {
-      unlistenPromise.then((unlisten) => unlisten());
+      backendLogPromise.then((unlisten) => unlisten());
+      networkDataPromise.then((unlisten) => unlisten());
       isConnected = false;
     };
   });
@@ -94,7 +121,15 @@
 
 <main class="container">
   <header class="header">
-    <h1 class="title">oDIsc</h1>
+    <div class="header-left">
+      <h1 class="title">oDIsc</h1>
+      <div class="osc-info">
+        <span>Incoming Port: {networkData.osc_listen_port}</span>
+        <span
+          >Outgoing Address: {networkData.osc_send_host}:{networkData.osc_send_port}</span
+        >
+      </div>
+    </div>
     <div class="header-controls">
       <div class="status">
         <div class="status-indicator" class:connected={isConnected}></div>
@@ -230,12 +265,33 @@
     border: 1px solid rgba(71, 85, 105, 0.3);
   }
 
+  .header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+
   .title {
     margin: 0;
     font-size: 2.5rem;
     font-weight: 700;
     color: #f1f5f9;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  }
+
+  .osc-info {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.875rem;
+    color: #94a3b8;
+    font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas,
+      "Courier New", monospace;
+  }
+
+  .osc-info span:not(:last-child)::after {
+    content: '|';
+    color: #475569;
+    margin-left: 1rem;
   }
 
   .header-controls {

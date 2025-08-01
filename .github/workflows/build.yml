@@ -9,6 +9,7 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -35,12 +36,6 @@ jobs:
 
       - name: Build frontend
         run: pnpm run build
-
-      - name: Install frontend dependencies
-        run: npm install
-
-      - name: Build frontend
-        run: npm run build
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --force

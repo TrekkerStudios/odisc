@@ -1,13 +1,52 @@
 mod handlers;
 mod helpers;
 mod midi;
+use crate::get_app_handle;
 use midir::MidiOutput;
 use rosc::OscPacket;
-use tauri::AppHandle;
+use tauri::Emitter;
 use tokio::net::UdpSocket;
 use tokio::signal;
 
-pub async fn backend(app_handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+pub enum Output {
+    Console,
+    // Error,
+    App,
+    AppError,
+}
+
+pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std::error::Error>> {
+    match type_output {
+        Output::Console => {
+            println!("{}", msg);
+            Ok(())
+        }
+        // Output::Error => {
+        //     eprintln!("{}", msg);
+        //     Ok(())
+        // }
+        Output::App => {
+            if let Some(app_handle) = get_app_handle() {
+                app_handle.emit("backend-log", &msg)?;
+                println!("{}", msg);
+            } else {
+                eprintln!("App handle not set!");
+            }
+            Ok(())
+        }
+        Output::AppError => {
+            if let Some(app_handle) = get_app_handle() {
+                app_handle.emit("backend-log", &msg)?;
+                eprintln!("{}", msg);
+            } else {
+                eprintln!("App handle not set!");
+            }
+            Ok(())
+        }
+    }
+}
+
+pub async fn backend() -> Result<(), Box<dyn std::error::Error>> {
     // Check/create files
     let (mappings_path, config_path) = helpers::ensure_files()?;
 
@@ -15,7 +54,7 @@ pub async fn backend(app_handle: &AppHandle) -> Result<(), Box<dyn std::error::E
     let mappings = match helpers::read_csv_file(mappings_path.to_str().unwrap()) {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("Error loading mappings: {}", e);
+            let _ = custom_print(format!("Error loading mappings: {}", e), Output::App);
             return Err(e.into());
         }
     };
@@ -23,9 +62,9 @@ pub async fn backend(app_handle: &AppHandle) -> Result<(), Box<dyn std::error::E
     // Initialize MIDI
     let midi_out = MidiOutput::new("MIDIOutput")?;
     let midi_outputs_list = midi::list_midi_devices(&midi_out);
-    println!("Available MIDI devices:");
+    let _ = custom_print(format!("Available MIDI devices:"), Output::App);
     for (i, name) in midi_outputs_list.iter().enumerate() {
-        println!("{}: {}", i, name);
+        let _ = custom_print(format!("{}: {}", i, name), Output::App);
     }
 
     // Load config
@@ -38,10 +77,10 @@ pub async fn backend(app_handle: &AppHandle) -> Result<(), Box<dyn std::error::E
     let mut buf = [0; 1024];
 
     // Connect to the chosen MIDI port
-    let mut conn_out = match midi::connect_to_midi_port(midi_out, &config.midi_output_name, &app_handle) {
+    let mut conn_out = match midi::connect_to_midi_port(midi_out, &config.midi_output_name) {
         Ok(conn) => conn,
         Err(e) => {
-            eprintln!("Error connecting to MIDI port: {}", e);
+            let _ = custom_print(format!("Error connecting to MIDI port: {}", e), Output::App);
             return Ok(());
         }
     };
@@ -56,24 +95,23 @@ pub async fn backend(app_handle: &AppHandle) -> Result<(), Box<dyn std::error::E
                     OscPacket::Message(msg) => {
                         println!("Address: {}", msg.addr);
                         println!("Arguments: {:?}", msg.args);
-                        if let Some(found_map) = handlers::match_mappings(&mappings, &msg, app_handle) {
+                        if let Some(found_map) = handlers::match_mappings(&mappings, &msg) {
                             // Handle outgoing OSC
                             handlers::outgoing_osc_handler(
                                 &sock,
                                 found_map.osc_out_address.as_ref().unwrap().as_str(),
                                 found_map.osc_out_args.as_deref(),
                                 &config.osc_send_host,
-                                &config.osc_send_port,
-                                app_handle
+                                &config.osc_send_port
                             )
                             .await?;
 
                             // Handle MIDI message
-                            if let Err(e) = midi::handle_midi_message(&mut conn_out, &found_map, &app_handle) {
-                                eprintln!("Error sending MIDI message: {}", e);
+                            if let Err(e) = midi::handle_midi_message(&mut conn_out, &found_map) {
+                                let _ = custom_print(format!("Error sending MIDI message: {}", e), Output::App);
                             }
                         } else {
-                            println!("Mapping not found.");
+                            let _ = custom_print(format!("Mapping not found."), Output::Console);
                         }
                     }
                     _ => {

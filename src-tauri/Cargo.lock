@@ -2468,6 +2468,7 @@ dependencies = [
  "csv",
  "dirs",
  "midir",
+ "once_cell",
  "regex",
  "rosc",
  "serde",

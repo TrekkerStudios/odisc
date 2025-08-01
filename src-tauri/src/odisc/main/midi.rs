@@ -1,9 +1,7 @@
-use crate::odisc::main::handlers;
 use crate::odisc::main::helpers::Mapping;
+use crate::odisc::main::{custom_print, handlers, Output};
 use midir::{MidiOutput, MidiOutputConnection};
 use std::error::Error;
-use tauri::AppHandle;
-use tauri::Emitter;
 
 pub fn list_midi_devices(midi_out: &MidiOutput) -> Vec<String> {
     midi_out
@@ -16,7 +14,6 @@ pub fn list_midi_devices(midi_out: &MidiOutput) -> Vec<String> {
 pub fn connect_to_midi_port(
     midi_out: MidiOutput,
     port_name_to_find: &str,
-    app_handle: &AppHandle,
 ) -> Result<MidiOutputConnection, Box<dyn Error>> {
     let out_ports = midi_out.ports();
     let port = out_ports.iter().find(|p| {
@@ -33,12 +30,10 @@ pub fn connect_to_midi_port(
             Ok(conn)
         }
         None => {
-            app_handle
-                .emit(
-                    "backend-log",
-                    format!("❌ No port found with name '{}'", port_name_to_find),
-                )
-                .unwrap();
+            let _ = custom_print(
+                format!("No port found with name '{}'", port_name_to_find).into(),
+                Output::AppError,
+            );
             Err(format!("No port found with name '{}'", port_name_to_find).into())
         }
     }
@@ -47,7 +42,6 @@ pub fn connect_to_midi_port(
 pub fn handle_midi_message(
     conn_out: &mut MidiOutputConnection,
     found_map: &Mapping,
-    app_handle: &AppHandle,
 ) -> Result<(), Box<dyn Error>> {
     match found_map.midi_type.as_deref() {
         Some("note_on") => {
@@ -59,23 +53,15 @@ pub fn handle_midi_message(
                 let channel = (channel as u8).saturating_sub(1); // 0-based
                 let msg = [0x90 | channel, note as u8, velocity as u8];
                 conn_out.send(&msg)?;
-                println!(
-                    "Sent MIDI note_on: ch={}, note={}, vel={}",
-                    channel + 1,
-                    note,
-                    velocity
+                let _ = custom_print(
+                    format!(
+                        "Sent MIDI note_on: ch={}, note={}, vel={}",
+                        channel + 1,
+                        note,
+                        velocity
+                    ),
+                    Output::App,
                 );
-                app_handle
-                    .emit(
-                        "backend-log",
-                        format!(
-                            "Sent MIDI note_on: ch={}, note={}, vel={}",
-                            channel + 1,
-                            note,
-                            velocity
-                        ),
-                    )
-                    .unwrap();
             }
         }
         Some("note_off") => {
@@ -87,23 +73,15 @@ pub fn handle_midi_message(
                 let channel = (channel as u8).saturating_sub(1);
                 let msg = [0x80 | channel, note as u8, velocity as u8];
                 conn_out.send(&msg)?;
-                println!(
-                    "Sent MIDI note_off: ch={}, note={}, vel={}",
-                    channel + 1,
-                    note,
-                    velocity
+                let _ = custom_print(
+                    format!(
+                        "Sent MIDI note_off: ch={}, note={}, vel={}",
+                        channel + 1,
+                        note,
+                        velocity
+                    ),
+                    Output::App,
                 );
-                app_handle
-                    .emit(
-                        "backend-log",
-                        format!(
-                            "Sent MIDI note_off: ch={}, note={}, vel={}",
-                            channel + 1,
-                            note,
-                            velocity
-                        ),
-                    )
-                    .unwrap();
             }
         }
         Some("cc") => {
@@ -115,23 +93,15 @@ pub fn handle_midi_message(
                 let channel = (channel as u8).saturating_sub(1);
                 let msg = [0xB0 | channel, controller as u8, value as u8];
                 conn_out.send(&msg)?;
-                println!(
-                    "Sent MIDI CC: ch={}, controller={}, value={}",
-                    channel + 1,
-                    controller,
-                    value
+                let _ = custom_print(
+                    format!(
+                        "Sent MIDI CC: ch={}, controller={}, value={}",
+                        channel + 1,
+                        controller,
+                        value
+                    ),
+                    Output::App,
                 );
-                app_handle
-                    .emit(
-                        "backend-log",
-                        format!(
-                            "Sent MIDI CC: ch={}, controller={}, value={}",
-                            channel + 1,
-                            controller,
-                            value
-                        ),
-                    )
-                    .unwrap();
             }
         }
         Some("pc") => {
@@ -140,28 +110,20 @@ pub fn handle_midi_message(
                 let channel = (channel as u8).saturating_sub(1);
                 let msg = [0xC0 | channel, value as u8];
                 conn_out.send(&msg)?;
-                println!(
-                    "Sent MIDI Program Change: ch={}, program={}",
-                    channel + 1,
-                    value
+                let _ = custom_print(
+                    format!(
+                        "Sent MIDI Program Change: ch={}, program={}",
+                        channel + 1,
+                        value
+                    ),
+                    Output::App,
                 );
-                app_handle
-                    .emit(
-                        "backend-log",
-                        format!(
-                            "Sent MIDI Program Change: ch={}, program={}",
-                            channel + 1,
-                            value
-                        ),
-                    )
-                    .unwrap();
             }
         }
         Some("qc_preset") => {
             let pgm = handlers::send_qc_preset(
                 found_map.qc_preset_id.as_ref().unwrap(),
-                &found_map.setlist.unwrap(),
-                app_handle,
+                &found_map.setlist.unwrap()
             );
 
             let channel = found_map.midi_channel.unwrap() as u8 - 1;

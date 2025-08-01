@@ -1,7 +1,19 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod odisc;
+use once_cell::sync::OnceCell;
 use std::fs;
+use tauri::AppHandle;
 use tauri::Manager;
+
+static APP_HANDLE: OnceCell<AppHandle> = OnceCell::new();
+
+pub fn set_app_handle(handle: AppHandle) {
+    APP_HANDLE.set(handle).ok();
+}
+
+pub fn get_app_handle() -> Option<&'static AppHandle> {
+    APP_HANDLE.get()
+}
 
 #[tauri::command]
 async fn run_backend(app_handle: tauri::AppHandle) {
@@ -25,6 +37,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![run_backend, read_csv_file])
+        .setup(|app| {
+            set_app_handle(app.handle().clone());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

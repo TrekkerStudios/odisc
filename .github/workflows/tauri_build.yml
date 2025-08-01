@@ -5,25 +5,24 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
-  build-tauri:
-    # Use the official Tauri action to build the app
-    uses: tauri-apps/tauri-action@v0
-    with:
-      # The name of the release artifact.
-      # __VERSION__ will be replaced with the version from tauri.conf.json
-      tagName: app-v__VERSION__
-      # The name of the release.
-      releaseName: 'App v__VERSION__'
-      # A message to be included in the release.
-      releaseBody: 'See the assets to download this version.'
-      # Creates the release as a draft so you can publish it manually.
-      releaseDraft: true
-      # Marks the release as a pre-release.
-      prerelease: false
-    secrets:
-      # Pass the GITHUB_TOKEN to the action to allow it to create a release.
-      githubToken: ${{ secrets.GITHUB_TOKEN }}
+  publish-tauri:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, ubuntu-22.04, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: 'App v__VERSION__'
+          releaseBody: 'See the assets to download this version.'
+          releaseDraft: true
+          prerelease: false

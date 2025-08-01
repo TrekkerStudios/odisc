@@ -58,6 +58,7 @@ pub async fn backend() -> Result<(), Box<dyn std::error::Error>> {
             return Err(e.into());
         }
     };
+    let _ = custom_print(format!("Mappings loaded!"), Output::App);
 
     // Initialize MIDI
     let midi_out = MidiOutput::new("MIDIOutput")?;
@@ -75,6 +76,8 @@ pub async fn backend() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("0.0.0.0:{}", config.osc_listen_port);
     let sock = UdpSocket::bind(addr).await?;
     let mut buf = [0; 1024];
+    let _ = custom_print(format!("OSC server listening on port {}", &config.osc_listen_port), Output::App);
+    let _ = custom_print(format!("OSC server sending on {}:{}", &config.osc_send_host, &config.osc_send_port), Output::App);
 
     // Connect to the chosen MIDI port
     let mut conn_out = match midi::connect_to_midi_port(midi_out, &config.midi_output_name) {
@@ -84,6 +87,7 @@ pub async fn backend() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
+    let _ = custom_print(format!("MIDI device connected: {}", &config.midi_output_name), Output::App);
 
     println!("Application started. Press Ctrl+C to exit.");
     // Listen for OSC packets

@@ -123,7 +123,8 @@ pub fn handle_midi_message(
         Some("qc_preset") => {
             let pgm = handlers::send_qc_preset(
                 found_map.qc_preset_id.as_ref().unwrap(),
-                &found_map.setlist.unwrap()
+                &found_map.setlist.unwrap(),
+                &found_map.midi_channel.unwrap(),
             );
 
             let channel = found_map.midi_channel.unwrap() as u8 - 1;

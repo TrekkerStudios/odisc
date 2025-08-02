@@ -72,39 +72,45 @@ pub async fn outgoing_osc_handler(
 
 // CSV MAPPING
 
-pub fn match_mappings<'a>(mappings: &'a [Mapping], msg: &OscMessage) -> Option<&'a Mapping> {
-    if let Some(mapping) = mappings.iter().find(|m| {
-        let addr_match: bool = m.osc_in_address == msg.addr;
+pub fn match_mappings<'a>(mappings: &'a [Mapping], msg: &OscMessage) -> Vec<&'a Mapping> {
+    let found_mappings: Vec<&'a Mapping> = mappings
+        .iter()
+        .filter(|m| {
+            let addr_match: bool = m.osc_in_address == msg.addr;
 
-        let args_match = match &m.osc_in_args {
-            None => true,
-            Some(s) if s.is_empty() => true,
-            Some(expected) => {
-                if msg.args.len() != 1 {
-                    false
-                } else if let rosc::OscType::String(ref val) = msg.args[0] {
-                    val == expected
-                } else {
-                    false
+            let args_match = match &m.osc_in_args {
+                None => true,
+                Some(s) if s.is_empty() => true,
+                Some(expected) => {
+                    if msg.args.len() != 1 {
+                        false
+                    } else if let rosc::OscType::String(ref val) = msg.args[0] {
+                        val == expected
+                    } else {
+                        false
+                    }
                 }
-            }
-        };
+            };
 
-        addr_match && args_match
-    }) {
-        let _ = custom_print(
-            format!(
-                "Found mapping: {:?} {:?}",
-                mapping.osc_in_address,
-                mapping.osc_in_args.as_deref()
-            ),
-            Output::App,
-        );
-        return Some(mapping);
+            addr_match && args_match
+        })
+        .collect();
+
+    if !found_mappings.is_empty() {
+        for mapping in &found_mappings {
+            let _ = custom_print(
+                format!(
+                    "Found mapping: {:?} {:?}",
+                    mapping.osc_in_address,
+                    mapping.osc_in_args.as_deref()
+                ),
+                Output::App,
+            );
+        }
     } else {
         println!("No mapping found for {:?}", msg.addr);
-        return None;
     }
+    found_mappings
 }
 
 // HANDLE QC
@@ -150,15 +156,16 @@ fn parse_preset_midi(number: &u32, letter: &char) -> Option<u32> {
     return Some(pgm_ch_num);
 }
 
-pub fn send_qc_preset(preset_id: &String, setlist: &u32) -> Option<u32> {
+pub fn send_qc_preset(preset_id: &String, setlist: &u32, channel: &u32) -> Option<u32> {
     if let Some((number, letter)) = parse_preset_id(preset_id) {
         let program_change_number = parse_preset_midi(&number, &letter);
         let _ = custom_print(
             format!(
-                "Sending QC Preset: Setlist {}, Preset {} -> PC: {}",
+                "Sending QC Preset: Setlist {}, Preset {} -> PC: {} @ Ch: {}",
                 setlist,
                 preset_id,
-                program_change_number.unwrap()
+                program_change_number.unwrap(),
+                channel,
             ),
             Output::App,
         );

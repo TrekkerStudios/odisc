@@ -1,4 +1,4 @@
-mod main;
+pub mod main;
 use tauri::AppHandle;
 use tauri::Emitter;
 

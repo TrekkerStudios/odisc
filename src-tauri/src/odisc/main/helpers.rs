@@ -7,7 +7,7 @@ use std::io::BufReader;
 use std::io::Write;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Mapping {
     pub osc_in_address: String,
     pub osc_in_args: Option<String>,
@@ -24,7 +24,7 @@ pub struct Mapping {
     pub _comment: Option<String>, // just for user reference, not actually used
 }
 
-pub fn read_csv_file(path: &str) -> Result<Vec<Mapping>, Box<dyn Error>> {
+pub fn load_mappings_from_csv(path: PathBuf) -> Result<Vec<Mapping>, Box<dyn Error>> {
     let file = File::open(path)?;
     let mut rdr = Reader::from_reader(file);
     let mut mappings = Vec::new();
@@ -86,6 +86,9 @@ pub fn ensure_files() -> std::io::Result<(PathBuf, PathBuf)> {
         fs::write(&mappings_path, headers)?;
         println!("Created default mappings.csv at {:?}", mappings_path);
     }
+
+    // Load mappings to confirm file is valid
+    load_mappings_from_csv(mappings_path.clone()).expect("Failed to load mappings");
 
     let config_path = odisc_dir.join("config.json");
     if !config_path.exists() {

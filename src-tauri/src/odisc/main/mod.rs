@@ -9,6 +9,13 @@ use tokio::net::UdpSocket;
 use tokio::signal;
 use serde_json::json;
 
+use lazy_static::lazy_static;
+use std::sync::Mutex;
+
+lazy_static! {
+    static ref MAPPINGS: Mutex<Vec<helpers::Mapping>> = Mutex::new(Vec::new());
+}
+
 pub enum Output {
     Console,
     // Error,
@@ -47,19 +54,23 @@ pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std:
     }
 }
 
+pub fn load_and_log_mappings(mappings_path: std::path::PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let mappings = helpers::load_mappings_from_csv(mappings_path)?;
+    let mut mappings_guard = MAPPINGS.lock().unwrap();
+    *mappings_guard = mappings;
+    let _ = custom_print(format!("Mappings loaded!"), Output::App);
+    Ok(())
+}
+
 pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // Check/create files
     let (mappings_path, config_path) = helpers::ensure_files()?;
 
     // Load mappings
-    let mappings = match helpers::read_csv_file(mappings_path.to_str().unwrap()) {
-        Ok(m) => m,
-        Err(e) => {
-            let _ = custom_print(format!("Error loading mappings: {}", e), Output::App);
-            return Err(e.into());
-        }
+    if let Err(e) = load_and_log_mappings(mappings_path) {
+        let _ = custom_print(format!("Error loading mappings: {}", e), Output::App);
+        return Err(e.into());
     };
-    let _ = custom_print(format!("Mappings loaded!"), Output::App);
 
     // Initialize MIDI
     let midi_out = MidiOutput::new("MIDIOutput")?;
@@ -119,7 +130,8 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
                     OscPacket::Message(msg) => {
                         println!("Address: {}", msg.addr);
                         println!("Arguments: {:?}", msg.args);
-                        let found_maps = handlers::match_mappings(&mappings, &msg);
+                        let cloned_mappings = MAPPINGS.lock().unwrap().clone();
+                        let found_maps = handlers::match_mappings(&cloned_mappings, &msg);
                         if !found_maps.is_empty() {
                             for found_map in found_maps {
                                 // Handle outgoing OSC

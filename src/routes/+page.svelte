@@ -117,6 +117,16 @@
       isLoadingCsv = false;
     }
   }
+
+  async function reloadMappings() {
+    try {
+      await invoke("reload_mappings");
+      await loadCsvFile();
+    } catch (error) {
+      console.error("Failed to reload mappings:", error);
+      csvError = `Failed to reload mappings: ${error}`;
+    }
+  }
 </script>
 
 <main class="container">
@@ -139,7 +149,7 @@
       </div>
       <button
         class="load-csv-btn"
-        on:click={loadCsvFile}
+        on:click={reloadMappings}
         disabled={isLoadingCsv}
       >
         {#if isLoadingCsv}
@@ -188,7 +198,7 @@
       </h2>
       <button
         class="refresh-btn"
-        on:click={loadCsvFile}
+        on:click={reloadMappings}
         disabled={isLoadingCsv}
       >
         🔄 Refresh

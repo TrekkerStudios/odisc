@@ -55,14 +55,20 @@ pub async fn outgoing_osc_handler(
     let encoded = encoder::encode(&packet).unwrap();
 
     // Send the packet over UDP
-    let addr = format!("{}:{}", osc_host, osc_port);
+    let mut final_port = *osc_port;
+    if osc_out_address.contains("synth/fx") {
+        println!("Exception: Synth FX message, bumping port...");
+        final_port += 1;
+    }
+    let addr = format!("{}:{}", osc_host, final_port);
+    println!("Sending message to {}", addr);
     sock.send_to(&encoded, addr).await?;
 
     let _ = custom_print(
         format!(
             "Sent OSC message: {} {:#?}",
             osc_out_address,
-            osc_out_args.unwrap()
+            osc_out_args.unwrap_or_default()
         ),
         Output::App,
     );

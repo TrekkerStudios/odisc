@@ -2467,6 +2467,7 @@ version = "0.1.0"
 dependencies = [
  "csv",
  "dirs",
+ "lazy_static",
  "midir",
  "once_cell",
  "regex",

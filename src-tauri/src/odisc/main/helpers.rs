@@ -20,6 +20,7 @@ pub struct Mapping {
     pub midi_controller: Option<u32>,
     pub midi_value: Option<u32>,
     pub qc_preset_id: Option<String>,
+    pub gt1000_preset_id: Option<String>,
     pub setlist: Option<u32>,
     pub _comment: Option<String>, // just for user reference, not actually used
 }
@@ -82,7 +83,7 @@ pub fn ensure_files() -> std::io::Result<(PathBuf, PathBuf)> {
 
     let mappings_path = odisc_dir.join("mappings.csv");
     if !mappings_path.exists() {
-        let headers = "osc_in_address,osc_in_args,osc_out_address,osc_out_args,midi_channel,midi_type,midi_note,midi_velocity,midi_controller,midi_value,setlist,qc_preset_id\ncomment\n";
+        let headers = "osc_in_address,osc_in_args,osc_out_address,osc_out_args,midi_channel,midi_type,midi_note,midi_velocity,midi_controller,midi_value,setlist,qc_preset_id,gt1000_preset_id\ncomment\n";
         fs::write(&mappings_path, headers)?;
         println!("Created default mappings.csv at {:?}", mappings_path);
     }

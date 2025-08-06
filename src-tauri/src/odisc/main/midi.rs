@@ -140,6 +140,18 @@ pub fn handle_midi_message(
             let pc_msg = [0xC0 | channel, program];
             conn_out.send(&pc_msg)?;
         }
+        Some("gt1000_preset") => {
+            if let (Some(preset_id), Some(channel)) = (
+                found_map.gt1000_preset_id.as_ref(),
+                found_map.midi_channel,
+            ) {
+                if let Some(pgm) = handlers::send_gt1000_preset(preset_id, &channel) {
+                    let channel = (channel as u8).saturating_sub(1);
+                    let msg = [0xC0 | channel, pgm as u8];
+                    conn_out.send(&msg)?;
+                }
+            }
+        }
         _ => {}
     }
     Ok(())

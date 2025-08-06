@@ -181,3 +181,94 @@ pub fn send_qc_preset(preset_id: &String, setlist: &u32, channel: &u32) -> Optio
         return None;
     }
 }
+
+// HANDLE GT-1000
+
+fn parse_gt1000_preset_id(preset_id: &str) -> Option<(char, u32, u32)> {
+    let re = Regex::new(r"^(U|P)(\d{1,2})-(\d)$").unwrap();
+    if let Some(caps) = re.captures(preset_id) {
+        let preset_type = caps.get(1).and_then(|m| m.as_str().chars().next());
+        let bank_number = caps.get(2).and_then(|m| m.as_str().parse::<u32>().ok());
+        let patch_number = caps.get(3).and_then(|m| m.as_str().parse::<u32>().ok());
+
+        if let (Some(pt), Some(bn), Some(pn)) = (preset_type, bank_number, patch_number) {
+            if (1..=50).contains(&bn) && (1..=5).contains(&pn) {
+                return Some((pt, bn, pn));
+            } else {
+                let _ = custom_print(
+                    format!(
+                        "Invalid GT-1000 preset value: {}. Bank must be 1-50, patch 1-5.",
+                        preset_id
+                    ),
+                    Output::App,
+                );
+                return None;
+            }
+        }
+    }
+
+    let _ = custom_print(
+        format!(
+            "Invalid GT-1000 preset format: {}. Expected format like 'U01-1' or 'P50-5'.",
+            preset_id
+        ),
+        Output::App,
+    );
+    None
+}
+
+fn parse_gt1000_preset_midi(
+    preset_type: &char,
+    bank_number: &u32,
+    patch_number: &u32,
+) -> Option<u32> {
+    if !(1..=50).contains(bank_number) {
+        eprintln!(
+            "Invalid bank number: {}. Must be between 1 and 50.",
+            bank_number
+        );
+        return None;
+    }
+    if !(1..=5).contains(patch_number) {
+        eprintln!(
+            "Invalid patch number: {}. Must be between 1 and 5.",
+            patch_number
+        );
+        return None;
+    }
+
+    let pc_value = (bank_number - 1) * 5 + (patch_number - 1);
+
+    match preset_type {
+        'U' => Some(pc_value),
+        'P' => Some(250 + pc_value),
+        _ => {
+            eprintln!(
+                "Invalid preset type: {}. Must be 'U' or 'P'.",
+                preset_type
+            );
+            None
+        }
+    }
+}
+
+pub fn send_gt1000_preset(preset_id: &String, channel: &u32) -> Option<u32> {
+    if let Some((preset_type, bank_number, patch_number)) = parse_gt1000_preset_id(preset_id) {
+        if let Some(program_change_number) =
+            parse_gt1000_preset_midi(&preset_type, &bank_number, &patch_number)
+        {
+            let _ = custom_print(
+                format!(
+                    "Sending GT-1000 Preset: {} -> PC: {} @ Ch: {}",
+                    preset_id, program_change_number, channel,
+                ),
+                Output::App,
+            );
+            return Some(program_change_number);
+        }
+        return None;
+    } else {
+        // Error already printed in parse_gt1000_preset_id
+        return None;
+    }
+}

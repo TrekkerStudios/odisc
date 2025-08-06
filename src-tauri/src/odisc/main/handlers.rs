@@ -217,7 +217,7 @@ fn parse_gt1000_preset_midi(
     preset_type: &char,
     bank_number: &u32,
     patch_number: &u32,
-) -> Option<u32> {
+) -> Option<(u32, u32, u32)> {
     if !(1..=50).contains(bank_number) {
         eprintln!(
             "Invalid bank number: {bank_number}. Must be between 1 and 50."
@@ -231,32 +231,37 @@ fn parse_gt1000_preset_midi(
         return None;
     }
 
-    let pc_value = (bank_number - 1) * 5 + (patch_number - 1);
-
-    match preset_type {
-        'U' => Some(pc_value),
-        'P' => Some(250 + pc_value),
+    let bank_select_msb = 0;
+    let bank_select_lsb = match preset_type {
+        'U' => bank_number - 1,
+        'P' => bank_number - 1 + 50,
         _ => {
             eprintln!(
                 "Invalid preset type: {preset_type}. Must be 'U' or 'P'."
             );
-            None
+            return None;
         }
-    }
+    };
+    let program_change_number = patch_number - 1;
+
+    Some((bank_select_msb, bank_select_lsb, program_change_number))
 }
 
-pub fn send_gt1000_preset(preset_id: &String, channel: &u32) -> Option<u32> {
+pub fn send_gt1000_preset(
+    preset_id: &String,
+    channel: &u32,
+) -> Option<(u32, u32, u32)> {
     if let Some((preset_type, bank_number, patch_number)) = parse_gt1000_preset_id(preset_id) {
-        if let Some(program_change_number) =
+        if let Some((bank_select_msb, bank_select_lsb, program_change_number)) =
             parse_gt1000_preset_midi(&preset_type, &bank_number, &patch_number)
         {
             let _ = custom_print(
                 format!(
-                    "Sending GT-1000 Preset: {preset_id} -> PC: {program_change_number} @ Ch: {channel}",
+                    "Sending GT-1000 Preset: {preset_id} -> Bank MSB: {bank_select_msb}, Bank LSB: {bank_select_lsb}, PC: {program_change_number} @ Ch: {channel}",
                 ),
                 Output::App,
             );
-            return Some(program_change_number);
+            return Some((bank_select_msb, bank_select_lsb, program_change_number));
         }
         None
     } else {

@@ -145,8 +145,15 @@ pub fn handle_midi_message(
                 found_map.gt1000_preset_id.as_ref(),
                 found_map.midi_channel,
             ) {
-                if let Some(pgm) = handlers::send_gt1000_preset(preset_id, &channel) {
+                if let Some((bank_msb, bank_lsb, pgm)) = handlers::send_gt1000_preset(preset_id, &channel) {
                     let channel = (channel as u8).saturating_sub(1);
+                    // Bank Select MSB
+                    let cc0_msg = [0xB0 | channel, 0, bank_msb as u8];
+                    conn_out.send(&cc0_msg)?;
+                    // Bank Select LSB
+                    let cc32_msg = [0xB0 | channel, 32, bank_lsb as u8];
+                    conn_out.send(&cc32_msg)?;
+                    // Program Change
                     let msg = [0xC0 | channel, pgm as u8];
                     conn_out.send(&msg)?;
                 }

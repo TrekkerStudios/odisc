@@ -10,7 +10,7 @@ use tokio::net::UdpSocket;
 
 pub async fn incoming_osc_handler(sock: &UdpSocket, buf: &mut [u8]) -> io::Result<OscPacket> {
     let (len, addr) = sock.recv_from(buf).await?;
-    println!("{:?} bytes received from {:?}", len, addr);
+    println!("{len:?} bytes received from {addr:?}");
 
     let _ = sock.send_to(&buf[..len], addr).await?;
     let (_rest, packet) = decoder::decode_udp(&buf[..len]).unwrap();
@@ -60,8 +60,8 @@ pub async fn outgoing_osc_handler(
         println!("Exception: Synth FX message, bumping port...");
         final_port += 1;
     }
-    let addr = format!("{}:{}", osc_host, final_port);
-    println!("Sending message to {}", addr);
+    let addr = format!("{osc_host}:{final_port}");
+    println!("Sending message to {addr}");
     sock.send_to(&encoded, addr).await?;
 
     let _ = custom_print(
@@ -131,8 +131,7 @@ fn parse_preset_id(preset_id: &str) -> Option<(u32, char)> {
         } else {
             let _ = custom_print(
                 format!(
-                    "Invalid Quad Cortex preset format: {}. Expected format like '1A', '12D', etc.",
-                    preset_id
+                    "Invalid Quad Cortex preset format: {preset_id}. Expected format like '1A', '12D', etc."
                 ),
                 Output::App,
             );
@@ -141,8 +140,7 @@ fn parse_preset_id(preset_id: &str) -> Option<(u32, char)> {
     } else {
         let _ = custom_print(
             format!(
-                "Invalid Quad Cortex preset format: {}. Expected format like '1A', '12D', etc.",
-                preset_id
+                "Invalid Quad Cortex preset format: {preset_id}. Expected format like '1A', '12D', etc."
             ),
             Output::App,
         );
@@ -151,15 +149,15 @@ fn parse_preset_id(preset_id: &str) -> Option<(u32, char)> {
 }
 
 fn parse_preset_midi(number: &u32, letter: &char) -> Option<u32> {
-    if number < &1u32 || number > &32u32 {
-        eprintln!("Invalid bank number: {}. Must be between 1 and 32.", number);
+    if !(&1u32..=&32u32).contains(&number) {
+        eprintln!("Invalid bank number: {number}. Must be between 1 and 32.");
         return None;
     }
 
     let preset_offset: u32 = (*letter as u32) - ('A' as u32);
     let pgm_ch_num = (number - 1) * 8 + preset_offset;
 
-    return Some(pgm_ch_num);
+    Some(pgm_ch_num)
 }
 
 pub fn send_qc_preset(preset_id: &String, setlist: &u32, channel: &u32) -> Option<u32> {
@@ -175,10 +173,10 @@ pub fn send_qc_preset(preset_id: &String, setlist: &u32, channel: &u32) -> Optio
             ),
             Output::App,
         );
-        return program_change_number;
+        program_change_number
     } else {
         // Handle the error case if needed
-        return None;
+        None
     }
 }
 
@@ -197,8 +195,7 @@ fn parse_gt1000_preset_id(preset_id: &str) -> Option<(char, u32, u32)> {
             } else {
                 let _ = custom_print(
                     format!(
-                        "Invalid GT-1000 preset value: {}. Bank must be 1-50, patch 1-5.",
-                        preset_id
+                        "Invalid GT-1000 preset value: {preset_id}. Bank must be 1-50, patch 1-5."
                     ),
                     Output::App,
                 );
@@ -209,8 +206,7 @@ fn parse_gt1000_preset_id(preset_id: &str) -> Option<(char, u32, u32)> {
 
     let _ = custom_print(
         format!(
-            "Invalid GT-1000 preset format: {}. Expected format like 'U01-1' or 'P50-5'.",
-            preset_id
+            "Invalid GT-1000 preset format: {preset_id}. Expected format like 'U01-1' or 'P50-5'."
         ),
         Output::App,
     );
@@ -224,15 +220,13 @@ fn parse_gt1000_preset_midi(
 ) -> Option<u32> {
     if !(1..=50).contains(bank_number) {
         eprintln!(
-            "Invalid bank number: {}. Must be between 1 and 50.",
-            bank_number
+            "Invalid bank number: {bank_number}. Must be between 1 and 50."
         );
         return None;
     }
     if !(1..=5).contains(patch_number) {
         eprintln!(
-            "Invalid patch number: {}. Must be between 1 and 5.",
-            patch_number
+            "Invalid patch number: {patch_number}. Must be between 1 and 5."
         );
         return None;
     }
@@ -244,8 +238,7 @@ fn parse_gt1000_preset_midi(
         'P' => Some(250 + pc_value),
         _ => {
             eprintln!(
-                "Invalid preset type: {}. Must be 'U' or 'P'.",
-                preset_type
+                "Invalid preset type: {preset_type}. Must be 'U' or 'P'."
             );
             None
         }
@@ -259,16 +252,15 @@ pub fn send_gt1000_preset(preset_id: &String, channel: &u32) -> Option<u32> {
         {
             let _ = custom_print(
                 format!(
-                    "Sending GT-1000 Preset: {} -> PC: {} @ Ch: {}",
-                    preset_id, program_change_number, channel,
+                    "Sending GT-1000 Preset: {preset_id} -> PC: {program_change_number} @ Ch: {channel}",
                 ),
                 Output::App,
             );
             return Some(program_change_number);
         }
-        return None;
+        None
     } else {
         // Error already printed in parse_gt1000_preset_id
-        return None;
+        None
     }
 }

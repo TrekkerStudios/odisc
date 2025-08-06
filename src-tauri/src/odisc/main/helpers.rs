@@ -58,8 +58,7 @@ pub fn read_config(
         let mut new_config = config.clone();
         if let Some(first) = midi_outputs.first() {
             println!(
-                "Configured MIDI device not found. Setting to first available: {}",
-                first
+                "Configured MIDI device not found. Setting to first available: {first}"
             );
             new_config.midi_output_name = first.clone();
         } else {
@@ -78,14 +77,14 @@ pub fn ensure_files() -> std::io::Result<(PathBuf, PathBuf)> {
     let odisc_dir = home.join("Documents").join("odisc");
     if !odisc_dir.exists() {
         fs::create_dir_all(&odisc_dir)?;
-        println!("Created directory: {:?}", odisc_dir);
+        println!("Created directory: {odisc_dir:?}");
     }
 
     let mappings_path = odisc_dir.join("mappings.csv");
     if !mappings_path.exists() {
         let headers = "osc_in_address,osc_in_args,osc_out_address,osc_out_args,midi_channel,midi_type,midi_note,midi_velocity,midi_controller,midi_value,setlist,qc_preset_id,gt1000_preset_id\ncomment\n";
         fs::write(&mappings_path, headers)?;
-        println!("Created default mappings.csv at {:?}", mappings_path);
+        println!("Created default mappings.csv at {mappings_path:?}");
     }
 
     // Load mappings to confirm file is valid
@@ -101,7 +100,7 @@ pub fn ensure_files() -> std::io::Result<(PathBuf, PathBuf)> {
 }"#;
         let mut file = fs::File::create(&config_path)?;
         file.write_all(default_config.as_bytes())?;
-        println!("Created default config.json at {:?}", config_path);
+        println!("Created default config.json at {config_path:?}");
     }
 
     Ok((mappings_path, config_path))

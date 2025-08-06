@@ -26,7 +26,7 @@ pub enum Output {
 pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std::error::Error>> {
     match type_output {
         Output::Console => {
-            println!("{}", msg);
+            println!("{msg}");
             Ok(())
         }
         // Output::Error => {
@@ -36,7 +36,7 @@ pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std:
         Output::App => {
             if let Some(app_handle) = get_app_handle() {
                 app_handle.emit("backend-log", format!("📥 {}", &msg))?;
-                println!("{}", msg);
+                println!("{msg}");
             } else {
                 eprintln!("App handle not set!");
             }
@@ -45,7 +45,7 @@ pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std:
         Output::AppError => {
             if let Some(app_handle) = get_app_handle() {
                 app_handle.emit("backend-log", format!("❌ {}", &msg))?;
-                eprintln!("{}", msg);
+                eprintln!("{msg}");
             } else {
                 eprintln!("App handle not set!");
             }
@@ -58,7 +58,7 @@ pub fn load_and_log_mappings(mappings_path: std::path::PathBuf) -> Result<(), Bo
     let mappings = helpers::load_mappings_from_csv(mappings_path)?;
     let mut mappings_guard = MAPPINGS.lock().unwrap();
     *mappings_guard = mappings;
-    let _ = custom_print(format!("Mappings loaded!"), Output::App);
+    let _ = custom_print("Mappings loaded!".to_string(), Output::App);
     Ok(())
 }
 
@@ -68,21 +68,21 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
 
     // Load mappings
     if let Err(e) = load_and_log_mappings(mappings_path) {
-        let _ = custom_print(format!("Error loading mappings: {}", e), Output::App);
-        return Err(e.into());
+        let _ = custom_print(format!("Error loading mappings: {e}"), Output::App);
+        return Err(e);
     };
 
     // Initialize MIDI
     let midi_out = MidiOutput::new("MIDIOutput")?;
     let midi_outputs_list = midi::list_midi_devices(&midi_out);
-    let _ = custom_print(format!("Available MIDI devices:"), Output::App);
+    let _ = custom_print("Available MIDI devices:".to_string(), Output::App);
     for (i, name) in midi_outputs_list.iter().enumerate() {
-        let _ = custom_print(format!("{}: {}", i, name), Output::App);
+        let _ = custom_print(format!("{i}: {name}"), Output::App);
     }
 
     // Load config
     let config = helpers::read_config(config_path.to_str().unwrap(), midi_outputs_list)?;
-    println!("{:?}", config);
+    println!("{config:?}");
 
     // Create OSC listener
     let addr = format!("0.0.0.0:{}", config.osc_listen_port);
@@ -104,7 +104,7 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
     let mut conn_out = match midi::connect_to_midi_port(midi_out, &config.midi_output_name) {
         Ok(conn) => conn,
         Err(e) => {
-            let _ = custom_print(format!("Error connecting to MIDI port: {}", e), Output::App);
+            let _ = custom_print(format!("Error connecting to MIDI port: {e}"), Output::App);
             return Ok(());
         }
     };
@@ -150,16 +150,16 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
 
                                 // Handle MIDI message
                                 if let Err(e) =
-                                    midi::handle_midi_message(&mut conn_out, &found_map)
+                                    midi::handle_midi_message(&mut conn_out, found_map)
                                 {
                                     let _ = custom_print(
-                                        format!("Error sending MIDI message: {}", e),
+                                        format!("Error sending MIDI message: {e}"),
                                         Output::App,
                                     );
                                 }
                             }
                         } else {
-                            let _ = custom_print(format!("Mapping not found."), Output::Console);
+                            let _ = custom_print("Mapping not found.".to_string(), Output::Console);
                         }
                     }
                     _ => {

@@ -19,22 +19,22 @@ pub fn connect_to_midi_port(
     let port = out_ports.iter().find(|p| {
         midi_out
             .port_name(p)
-            .map_or(false, |name| name == port_name_to_find)
+            .is_ok_and(|name| name == port_name_to_find)
     });
 
     match port {
         Some(port) => {
             let port_name = midi_out.port_name(port)?;
             let conn = midi_out.connect(port, "midir-connection")?;
-            println!("Successfully connected to MIDI output port: {}", port_name);
+            println!("Successfully connected to MIDI output port: {port_name}");
             Ok(conn)
         }
         None => {
             let _ = custom_print(
-                format!("No port found with name '{}'", port_name_to_find).into(),
+                format!("No port found with name '{port_name_to_find}'"),
                 Output::AppError,
             );
-            Err(format!("No port found with name '{}'", port_name_to_find).into())
+            Err(format!("No port found with name '{port_name_to_find}'").into())
         }
     }
 }

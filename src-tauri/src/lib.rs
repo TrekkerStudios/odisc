@@ -25,11 +25,11 @@ fn read_csv_file(app_handle: tauri::AppHandle) -> Result<String, String> {
     let documents_path = app_handle
         .path()
         .document_dir()
-        .map_err(|e| format!("Failed to get documents directory: {}", e.to_string()))?;
+        .map_err(|e| format!("Failed to get documents directory: {e}"))?;
 
     let csv_path = documents_path.join("odisc").join("mappings.csv");
 
-    fs::read_to_string(&csv_path).map_err(|e| format!("Failed to read CSV file: {}", e))
+    fs::read_to_string(&csv_path).map_err(|e| format!("Failed to read CSV file: {e}"))
 }
 
 #[tauri::command]
@@ -37,7 +37,7 @@ fn reload_mappings(app_handle: tauri::AppHandle) -> Result<(), String> {
     let documents_path = app_handle
         .path()
         .document_dir()
-        .map_err(|e| format!("Failed to get documents directory: {}", e.to_string()))?;
+        .map_err(|e| format!("Failed to get documents directory: {e}"))?;
     let csv_path = documents_path.join("odisc").join("mappings.csv");
 
     match odisc::main::load_and_log_mappings(csv_path) {
@@ -45,7 +45,7 @@ fn reload_mappings(app_handle: tauri::AppHandle) -> Result<(), String> {
             println!("Reloaded mappings");
             Ok(())
         }
-        Err(e) => Err(format!("Failed to reload mappings: {}", e)),
+        Err(e) => Err(format!("Failed to reload mappings: {e}")),
     }
 }
 

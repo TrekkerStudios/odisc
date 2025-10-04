@@ -5,6 +5,7 @@ use crate::get_app_handle;
 use midir::MidiOutput;
 use rosc::OscPacket;
 use serde_json::json;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::net::UdpSocket;
 use tokio::signal;
@@ -13,7 +14,7 @@ use lazy_static::lazy_static;
 use std::sync::RwLock;
 
 lazy_static! {
-    static ref MAPPINGS: RwLock<Vec<helpers::Mapping>> = RwLock::new(Vec::new());
+    static ref MAPPINGS: RwLock<Arc<Vec<helpers::Mapping>>> = RwLock::new(Arc::new(Vec::new()));
     static ref DEBUG_LOGGING: RwLock<bool> = RwLock::new(false);
 }
 
@@ -62,7 +63,7 @@ pub fn load_and_log_mappings(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mappings = helpers::load_mappings_from_csv(mappings_path)?;
     let mut mappings_guard = MAPPINGS.write().unwrap();
-    *mappings_guard = mappings;
+    *mappings_guard = Arc::new(mappings);
     let _ = custom_print("Mappings loaded!".to_string(), Output::App);
     Ok(())
 }
@@ -99,7 +100,7 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
     // Create OSC listener
     let addr = format!("0.0.0.0:{}", config.osc_listen_port);
     let sock = UdpSocket::bind(addr).await?;
-    let mut buf = [0; 1024];
+    let mut buf = [0u8; 2048];
     let _ = custom_print(
         format!("OSC server listening on port {}", &config.osc_listen_port),
         Output::App,
@@ -145,7 +146,7 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
                         // let cloned_mappings = MAPPINGS.lock().unwrap().clone();
                         // let found_maps = handlers::match_mappings(&cloned_mappings, &msg);
                         let found_maps = {
-                            let mappings = MAPPINGS.read().unwrap(); // read lock instead of exclusive
+                            let mappings = MAPPINGS.read().unwrap();
                             handlers::match_mappings(&mappings, &msg)
                         };
 
@@ -166,7 +167,7 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
                                 }
 
                                 // Handle MIDI message
-                                if let Err(e) = midi::handle_midi_message(&mut conn_out, found_map).await {
+                                if let Err(e) = midi::handle_midi_message(&mut conn_out, found_map) {
                                     let _ = custom_print(
                                         format!("Error sending MIDI message: {e}"),
                                         Output::AppError,

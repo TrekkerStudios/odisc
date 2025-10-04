@@ -5,6 +5,7 @@ use regex::Regex;
 use rosc::{decoder, encoder, OscMessage, OscPacket, OscType};
 use std::io;
 use tokio::net::UdpSocket;
+use smallvec::SmallVec;
 
 use lazy_static::lazy_static;
 
@@ -29,42 +30,42 @@ pub async fn outgoing_osc_handler(
     osc_host: &str,
     osc_port: &u16,
 ) -> std::io::Result<()> {
-    let final_args: Vec<OscType> = match osc_out_args {
-        Some(args) if !args.trim().is_empty() => args
-            .split_whitespace()
-            .map(|arg| {
-                arg.parse::<f32>()
-                    .map(OscType::Float)
-                    .unwrap_or_else(|_| OscType::String(arg.to_string()))
-            })
-            .collect(),
-        _ => Vec::new(),
+    // Stack-allocate for up to 8 args, heap for more
+    let final_args: SmallVec<[OscType; 8]> = match osc_out_args {
+        Some(args) if !args.trim().is_empty() => {
+            args.split_whitespace()
+                .filter_map(|arg| {
+                    if let Ok(num) = arg.parse::<f32>() {
+                        Some(OscType::Float(num))
+                    } else if !arg.is_empty() {
+                        Some(OscType::String(arg.to_string()))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        }
+        _ => SmallVec::new(),
     };
 
     let msg = OscMessage {
         addr: osc_out_address.to_string(),
-        args: final_args,
+        args: final_args.to_vec(), // Convert to Vec for OscMessage
     };
     let packet = OscPacket::Message(msg);
     let encoded = encoder::encode(&packet)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:?}", e)))?;
 
-    let mut final_port = *osc_port;
-    if osc_out_address.contains("synth/fx") {
-        final_port += 1;
-    }
+    let final_port = if osc_out_address.contains("synth/fx") {
+        osc_port + 1
+    } else {
+        *osc_port
+    };
+    
     let addr = format!("{osc_host}:{final_port}");
     sock.send_to(&encoded, addr).await?;
-
-    let _ = custom_print(
-        format!(
-            "Sent OSC message: {} {:#?}",
-            osc_out_address,
-            osc_out_args.unwrap_or_default()
-        ),
-        Output::App,
-    );
-
+    
+    // Remove custom_print entirely from this hot path
     Ok(())
 }
 
@@ -80,13 +81,8 @@ pub fn match_mappings(mappings: &[Mapping], msg: &OscMessage) -> Vec<Mapping> {
                 None => true,
                 Some(s) if s.is_empty() => true,
                 Some(expected) => {
-                    if msg.args.len() != 1 {
-                        false
-                    } else if let rosc::OscType::String(ref val) = msg.args[0] {
-                        val == expected
-                    } else {
-                        false
-                    }
+                    matches!(&msg.args[..], 
+                        [rosc::OscType::String(val)] if val == expected)
                 }
             };
 
@@ -94,20 +90,6 @@ pub fn match_mappings(mappings: &[Mapping], msg: &OscMessage) -> Vec<Mapping> {
         })
         .cloned()
         .collect();
-
-    // Only log if debug enabled
-    if !found_mappings.is_empty() {
-        for mapping in &found_mappings {
-            let _ = custom_print(
-                format!(
-                    "Found mapping: {:?} {:?}",
-                    mapping.osc_in_address,
-                    mapping.osc_in_args.as_deref()
-                ),
-                Output::App,
-            );
-        }
-    }
 
     found_mappings
 }

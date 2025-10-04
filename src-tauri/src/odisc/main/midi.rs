@@ -2,7 +2,6 @@ use crate::odisc::main::helpers::Mapping;
 use crate::odisc::main::{custom_print, handlers, Output};
 use midir::{MidiOutput, MidiOutputConnection};
 use std::error::Error;
-use tokio::time::{sleep, Duration};
 
 pub fn list_midi_devices(midi_out: &MidiOutput) -> Vec<String> {
     midi_out
@@ -40,7 +39,7 @@ pub fn connect_to_midi_port(
     }
 }
 
-pub async fn handle_midi_message(
+pub fn handle_midi_message(
     conn_out: &mut MidiOutputConnection,
     found_map: &Mapping,
 ) -> Result<(), Box<dyn Error>> {
@@ -131,17 +130,10 @@ pub async fn handle_midi_message(
             let channel = found_map.midi_channel.unwrap() as u8 - 1;
             let setlist: u8 = found_map.setlist.unwrap() as u8;
 
-            let cc0_msg = [0xB0 | channel, 0, 0];
-            conn_out.send(&cc0_msg)?;
-            sleep(Duration::from_micros(500)).await; // Small delay
-
-            let cc32_msg = [0xB0 | channel, 32, setlist];
-            conn_out.send(&cc32_msg)?;
-            sleep(Duration::from_micros(500)).await;
-
-            let program = pgm.unwrap() as u8;
-            let pc_msg = [0xC0 | channel, program];
-            conn_out.send(&pc_msg)?;
+            // Send all three messages without delay - MIDI is fast enough
+            conn_out.send(&[0xB0 | channel, 0, 0])?;
+            conn_out.send(&[0xB0 | channel, 32, setlist])?;
+            conn_out.send(&[0xC0 | channel, pgm.unwrap() as u8])?;
         }
         Some("gt1000_preset") => {
             if let (Some(preset_id), Some(channel)) =
@@ -151,17 +143,9 @@ pub async fn handle_midi_message(
                     handlers::send_gt1000_preset(preset_id, &channel)
                 {
                     let channel = (channel as u8).saturating_sub(1);
-
-                    let cc0_msg = [0xB0 | channel, 0, bank_msb as u8];
-                    conn_out.send(&cc0_msg)?;
-                    sleep(Duration::from_micros(500)).await;
-
-                    let cc32_msg = [0xB0 | channel, 32, bank_lsb as u8];
-                    conn_out.send(&cc32_msg)?;
-                    sleep(Duration::from_micros(500)).await;
-
-                    let msg = [0xC0 | channel, pgm as u8];
-                    conn_out.send(&msg)?;
+                    conn_out.send(&[0xB0 | channel, 0, bank_msb as u8])?;
+                    conn_out.send(&[0xB0 | channel, 32, bank_lsb as u8])?;
+                    conn_out.send(&[0xC0 | channel, pgm as u8])?;
                 }
             }
         }

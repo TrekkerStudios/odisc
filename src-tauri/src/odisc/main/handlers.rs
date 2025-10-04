@@ -6,15 +6,19 @@ use rosc::{decoder, encoder, OscMessage, OscPacket, OscType};
 use std::io;
 use tokio::net::UdpSocket;
 
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref QC_PRESET_REGEX: Regex = Regex::new(r"^(\d+)([A-H])$").unwrap();
+    static ref GT1000_PRESET_REGEX: Regex = Regex::new(r"^(U|P)(\d{1,2})-(\d)$").unwrap();
+}
+
 // OSC
 
 pub async fn incoming_osc_handler(sock: &UdpSocket, buf: &mut [u8]) -> io::Result<OscPacket> {
-    let (len, addr) = sock.recv_from(buf).await?;
-    println!("{len:?} bytes received from {addr:?}");
-
-    let _ = sock.send_to(&buf[..len], addr).await?;
-    let (_rest, packet) = decoder::decode_udp(&buf[..len]).unwrap();
-
+    let (len, _addr) = sock.recv_from(buf).await?;
+    let (_rest, packet) = decoder::decode_udp(&buf[..len])
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     Ok(packet)
 }
 
@@ -25,43 +29,31 @@ pub async fn outgoing_osc_handler(
     osc_host: &str,
     osc_port: &u16,
 ) -> std::io::Result<()> {
-    let final_args: Vec<OscType> = if let Some(osc_out_args) = osc_out_args {
-        if !osc_out_args.trim().is_empty() {
-            osc_out_args
-                .split_whitespace()
-                .map(|arg| {
-                    if let Ok(num) = arg.parse::<f32>() {
-                        OscType::Float(num)
-                    } else {
-                        OscType::String(arg.to_string())
-                    }
-                })
-                .collect()
-        } else {
-            Vec::new()
-        }
-    } else {
-        Vec::new()
+    let final_args: Vec<OscType> = match osc_out_args {
+        Some(args) if !args.trim().is_empty() => args
+            .split_whitespace()
+            .map(|arg| {
+                arg.parse::<f32>()
+                    .map(OscType::Float)
+                    .unwrap_or_else(|_| OscType::String(arg.to_string()))
+            })
+            .collect(),
+        _ => Vec::new(),
     };
 
-    // Build the OSC message
     let msg = OscMessage {
         addr: osc_out_address.to_string(),
         args: final_args,
     };
     let packet = OscPacket::Message(msg);
+    let encoded = encoder::encode(&packet)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:?}", e)))?;
 
-    // Encode the packet to bytes
-    let encoded = encoder::encode(&packet).unwrap();
-
-    // Send the packet over UDP
     let mut final_port = *osc_port;
     if osc_out_address.contains("synth/fx") {
-        println!("Exception: Synth FX message, bumping port...");
         final_port += 1;
     }
     let addr = format!("{osc_host}:{final_port}");
-    println!("Sending message to {addr}");
     sock.send_to(&encoded, addr).await?;
 
     let _ = custom_print(
@@ -78,11 +70,11 @@ pub async fn outgoing_osc_handler(
 
 // CSV MAPPING
 
-pub fn match_mappings<'a>(mappings: &'a [Mapping], msg: &OscMessage) -> Vec<&'a Mapping> {
-    let found_mappings: Vec<&'a Mapping> = mappings
+pub fn match_mappings(mappings: &[Mapping], msg: &OscMessage) -> Vec<Mapping> {
+    let found_mappings: Vec<Mapping> = mappings
         .iter()
         .filter(|m| {
-            let addr_match: bool = m.osc_in_address == msg.addr;
+            let addr_match = m.osc_in_address == msg.addr;
 
             let args_match = match &m.osc_in_args {
                 None => true,
@@ -100,8 +92,10 @@ pub fn match_mappings<'a>(mappings: &'a [Mapping], msg: &OscMessage) -> Vec<&'a 
 
             addr_match && args_match
         })
+        .cloned()
         .collect();
 
+    // Only log if debug enabled
     if !found_mappings.is_empty() {
         for mapping in &found_mappings {
             let _ = custom_print(
@@ -113,17 +107,15 @@ pub fn match_mappings<'a>(mappings: &'a [Mapping], msg: &OscMessage) -> Vec<&'a 
                 Output::App,
             );
         }
-    } else {
-        println!("No mapping found for {:?}", msg.addr);
     }
+
     found_mappings
 }
 
 // HANDLE QC
 
 fn parse_preset_id(preset_id: &str) -> Option<(u32, char)> {
-    let re = Regex::new(r"^(\d+)([A-H])$").unwrap();
-    if let Some(caps) = re.captures(preset_id) {
+    if let Some(caps) = QC_PRESET_REGEX.captures(preset_id) {
         let number = caps.get(1).and_then(|m| m.as_str().parse::<u32>().ok());
         let letter = caps.get(2).and_then(|m| m.as_str().chars().next());
         if let (Some(number), Some(letter)) = (number, letter) {
@@ -183,8 +175,7 @@ pub fn send_qc_preset(preset_id: &String, setlist: &u32, channel: &u32) -> Optio
 // HANDLE GT-1000
 
 fn parse_gt1000_preset_id(preset_id: &str) -> Option<(char, u32, u32)> {
-    let re = Regex::new(r"^(U|P)(\d{1,2})-(\d)$").unwrap();
-    if let Some(caps) = re.captures(preset_id) {
+    if let Some(caps) = GT1000_PRESET_REGEX.captures(preset_id) {
         let preset_type = caps.get(1).and_then(|m| m.as_str().chars().next());
         let bank_number = caps.get(2).and_then(|m| m.as_str().parse::<u32>().ok());
         let patch_number = caps.get(3).and_then(|m| m.as_str().parse::<u32>().ok());
@@ -219,15 +210,11 @@ fn parse_gt1000_preset_midi(
     patch_number: &u32,
 ) -> Option<(u32, u32, u32)> {
     if !(1..=50).contains(bank_number) {
-        eprintln!(
-            "Invalid bank number: {bank_number}. Must be between 1 and 50."
-        );
+        eprintln!("Invalid bank number: {bank_number}. Must be between 1 and 50.");
         return None;
     }
     if !(1..=5).contains(patch_number) {
-        eprintln!(
-            "Invalid patch number: {patch_number}. Must be between 1 and 5."
-        );
+        eprintln!("Invalid patch number: {patch_number}. Must be between 1 and 5.");
         return None;
     }
 
@@ -236,9 +223,7 @@ fn parse_gt1000_preset_midi(
         'U' => bank_number - 1,
         'P' => bank_number - 1 + 50,
         _ => {
-            eprintln!(
-                "Invalid preset type: {preset_type}. Must be 'U' or 'P'."
-            );
+            eprintln!("Invalid preset type: {preset_type}. Must be 'U' or 'P'.");
             return None;
         }
     };
@@ -247,10 +232,7 @@ fn parse_gt1000_preset_midi(
     Some((bank_select_msb, bank_select_lsb, program_change_number))
 }
 
-pub fn send_gt1000_preset(
-    preset_id: &String,
-    channel: &u32,
-) -> Option<(u32, u32, u32)> {
+pub fn send_gt1000_preset(preset_id: &String, channel: &u32) -> Option<(u32, u32, u32)> {
     if let Some((preset_type, bank_number, patch_number)) = parse_gt1000_preset_id(preset_id) {
         if let Some((bank_select_msb, bank_select_lsb, program_change_number)) =
             parse_gt1000_preset_midi(&preset_type, &bank_number, &patch_number)

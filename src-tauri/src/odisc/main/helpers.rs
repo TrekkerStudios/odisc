@@ -44,6 +44,8 @@ pub struct Config {
     pub osc_send_host: String,
     pub osc_send_port: u16,
     pub midi_output_name: String,
+    #[serde(default)]
+    pub debug_logging: bool,
 }
 
 pub fn read_config(
@@ -57,9 +59,7 @@ pub fn read_config(
     if !midi_outputs.contains(&config.midi_output_name) {
         let mut new_config = config.clone();
         if let Some(first) = midi_outputs.first() {
-            println!(
-                "Configured MIDI device not found. Setting to first available: {first}"
-            );
+            println!("Configured MIDI device not found. Setting to first available: {first}");
             new_config.midi_output_name = first.clone();
         } else {
             println!("No MIDI output devices available. MIDI output will be disabled.");
@@ -96,7 +96,8 @@ pub fn ensure_files() -> std::io::Result<(PathBuf, PathBuf)> {
   "OSC_LISTEN_PORT": 8000,
   "OSC_SEND_HOST": "127.0.0.1",
   "OSC_SEND_PORT": 7001,
-  "MIDI_OUTPUT_NAME": ""
+  "MIDI_OUTPUT_NAME": "",
+  "DEBUG_LOGGING": false
 }"#;
         let mut file = fs::File::create(&config_path)?;
         file.write_all(default_config.as_bytes())?;

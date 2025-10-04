@@ -4,16 +4,17 @@ mod midi;
 use crate::get_app_handle;
 use midir::MidiOutput;
 use rosc::OscPacket;
+use serde_json::json;
 use tauri::{AppHandle, Emitter};
 use tokio::net::UdpSocket;
 use tokio::signal;
-use serde_json::json;
 
 use lazy_static::lazy_static;
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 lazy_static! {
-    static ref MAPPINGS: Mutex<Vec<helpers::Mapping>> = Mutex::new(Vec::new());
+    static ref MAPPINGS: RwLock<Vec<helpers::Mapping>> = RwLock::new(Vec::new());
+    static ref DEBUG_LOGGING: RwLock<bool> = RwLock::new(false);
 }
 
 pub enum Output {
@@ -24,21 +25,23 @@ pub enum Output {
 }
 
 pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std::error::Error>> {
+    let debug_enabled = *DEBUG_LOGGING.read().unwrap(); // Use .read() not .lock()
+
     match type_output {
         Output::Console => {
-            println!("{msg}");
+            if debug_enabled {
+                println!("{msg}");
+            }
             Ok(())
         }
-        // Output::Error => {
-        //     eprintln!("{}", msg);
-        //     Ok(())
-        // }
         Output::App => {
-            if let Some(app_handle) = get_app_handle() {
-                app_handle.emit("backend-log", format!("📥 {}", &msg))?;
-                println!("{msg}");
-            } else {
-                eprintln!("App handle not set!");
+            if debug_enabled {
+                if let Some(app_handle) = get_app_handle() {
+                    app_handle.emit("backend-log", format!("📥 {}", &msg))?;
+                    println!("{msg}");
+                } else {
+                    eprintln!("App handle not set!");
+                }
             }
             Ok(())
         }
@@ -54,9 +57,11 @@ pub fn custom_print(msg: String, type_output: Output) -> Result<(), Box<dyn std:
     }
 }
 
-pub fn load_and_log_mappings(mappings_path: std::path::PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+pub fn load_and_log_mappings(
+    mappings_path: std::path::PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mappings = helpers::load_mappings_from_csv(mappings_path)?;
-    let mut mappings_guard = MAPPINGS.lock().unwrap();
+    let mut mappings_guard = MAPPINGS.write().unwrap();
     *mappings_guard = mappings;
     let _ = custom_print("Mappings loaded!".to_string(), Output::App);
     Ok(())
@@ -68,7 +73,7 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
 
     // Load mappings
     if let Err(e) = load_and_log_mappings(mappings_path) {
-        let _ = custom_print(format!("Error loading mappings: {e}"), Output::App);
+        let _ = custom_print(format!("Error loading mappings: {e}"), Output::AppError);
         return Err(e);
     };
 
@@ -82,6 +87,13 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
 
     // Load config
     let config = helpers::read_config(config_path.to_str().unwrap(), midi_outputs_list)?;
+
+    // Set debug logging flag
+    {
+        let mut debug = DEBUG_LOGGING.write().unwrap();
+        *debug = config.debug_logging;
+    }
+
     println!("{config:?}");
 
     // Create OSC listener
@@ -128,12 +140,17 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
                 let packet = packet_result?;
                 match packet {
                     OscPacket::Message(msg) => {
-                        println!("Address: {}", msg.addr);
-                        println!("Arguments: {:?}", msg.args);
-                        let cloned_mappings = MAPPINGS.lock().unwrap().clone();
-                        let found_maps = handlers::match_mappings(&cloned_mappings, &msg);
+                        // println!("Address: {}", msg.addr);
+                        // println!("Arguments: {:?}", msg.args);
+                        // let cloned_mappings = MAPPINGS.lock().unwrap().clone();
+                        // let found_maps = handlers::match_mappings(&cloned_mappings, &msg);
+                        let found_maps = {
+                            let mappings = MAPPINGS.read().unwrap(); // read lock instead of exclusive
+                            handlers::match_mappings(&mappings, &msg)
+                        };
+
                         if !found_maps.is_empty() {
-                            for found_map in found_maps {
+                            for found_map in &found_maps {  // Borrow instead of move
                                 // Handle outgoing OSC
                                 if let Some(addr) = &found_map.osc_out_address {
                                     if !addr.is_empty() {
@@ -149,12 +166,10 @@ pub async fn backend(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Er
                                 }
 
                                 // Handle MIDI message
-                                if let Err(e) =
-                                    midi::handle_midi_message(&mut conn_out, found_map)
-                                {
+                                if let Err(e) = midi::handle_midi_message(&mut conn_out, found_map).await {
                                     let _ = custom_print(
                                         format!("Error sending MIDI message: {e}"),
-                                        Output::App,
+                                        Output::AppError,
                                     );
                                 }
                             }
